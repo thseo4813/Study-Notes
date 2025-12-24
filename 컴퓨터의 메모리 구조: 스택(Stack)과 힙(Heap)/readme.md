@@ -1,9 +1,3 @@
-개발자들이 코드의 성능을 최적화하거나 `StackOverflowError`, `OutOfMemoryError` 같은 치명적인 오류를 만났을 때, 반드시 이해하고 있어야 할 **메모리 관리(Stack vs Heap)**에 대한 정리입니다.
-
-이 내용은 변수의 생명 주기와 성능을 결정짓는 핵심 메커니즘입니다.
-
----
-
 # 컴퓨터의 메모리 구조: 스택(Stack)과 힙(Heap)
 
 ## 1. 핵심 요약 (Executive Summary)
