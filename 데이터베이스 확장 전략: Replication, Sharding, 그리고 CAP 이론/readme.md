@@ -20,13 +20,13 @@
 ### 2.1 아키텍처 다이어그램
 
 ```mermaid
-graph TD
-    User[App Server]
+   graph TD
+    User["App Server"]
     
     subgraph "DB Cluster"
-        Master[👑 Master DB <br/> (Write Only)]
-        Slave1[Slave DB 1 <br/> (Read Only)]
-        Slave2[Slave DB 2 <br/> (Read Only)]
+        Master["👑 Master DB <br/> (Write Only)"]
+        Slave1["Slave DB 1 <br/> (Read Only)"]
+        Slave2["Slave DB 2 <br/> (Read Only)"]
     end
     
     User -- "INSERT / UPDATE / DELETE" --> Master
