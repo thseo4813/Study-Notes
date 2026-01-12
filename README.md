@@ -35,20 +35,20 @@
 ### 💻 [00-cs-basics: CS 기초](./00-cs-basics)
 컴퓨터 과학의 근본적인 개념들을 다룹니다. "왜 컴퓨터는 이렇게 동작하는가"에 대한 답을 찾는 공간입니다.
 
-- [**알고리즘의 세계: 문제 해결의 핵심 도구**](./00-cs-basics/algorithms)
+- [**알고리즘의 세계: 문제 해결의 핵심 도구**](./00-cs-basics/algorithms.md)
   - 정렬 알고리즘 (퀵, 병합, 힙 정렬)
   - 검색 알고리즘 (이진 검색, 해시 검색)
   - 동적 프로그래밍과 그리디 알고리즘
   - 그래프 알고리즘 (DFS/BFS, 최단 경로)
   - 시간/공간 복잡도 분석
 
-- [**컴퓨터 아키텍처 기초: 하드웨어와 소프트웨어의 연결**](./00-cs-basics/computer-architecture)
+- [**컴퓨터 아키텍처 기초: 하드웨어와 소프트웨어의 연결**](./00-cs-basics/computer-architecture.md)
   - CPU 아키텍처와 명령어 처리 파이프라인
   - 메모리 계층 구조와 캐시 원리
   - 병렬 처리 (SIMD, MIMD)와 현대 프로세서
   - I/O 시스템과 인터럽트/DMA
 
-- [**프로그래밍 언어 기초: 언어 설계와 컴파일러 원리**](./00-cs-basics/programming-languages)
+- [**프로그래밍 언어 기초: 언어 설계와 컴파일러 원리**](./00-cs-basics/programming-languages.md)
   - 컴파일 vs 인터프리터의 차이점
   - 정적 vs 동적 타이핑의 트레이드오프
   - 프로그래밍 패러다임 (명령형, 객체지향, 함수형)
@@ -87,6 +87,11 @@
   - UTC Sandwich 전략으로 타임존 문제 해결
   - ISO 8601 표준과 시간대 처리
 
+- [**가상 메모리**](./01-os/virtual-memory.md)
+  - 페이지와 세그먼테이션
+  - MMU와 주소 변환
+  - 스와핑과 페이지 폴트
+
 ### 🌐 [02-network: 네트워크](./02-network)
 네트워크 통신의 원리와 최적화 기법을 다룹니다.
 
@@ -109,6 +114,11 @@
   - 하이브리드 암호화 시스템 (비대칭+대칭키)
   - SSL/TLS Handshake 과정
   - Mixed Content와 HSTS 보안
+
+- [**HTTP/3와 QUIC**](./02-network/http-3.md)
+  - UDP 기반의 새로운 전송 프로토콜
+  - 0-RTT 핸드셰이크와 연결 마이그레이션
+  - 스트림 멀티플렉싱과 헤더 압축
 
 - [**로드 밸런싱**](./02-network/load-balancing)
   - Reverse Proxy vs Forward Proxy

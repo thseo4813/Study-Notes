@@ -160,10 +160,10 @@ System.out.println(result);      // -2,147,483,648 (최솟값으로 순환)
 
 결과: **0.1은 무한 소수**가 되어 근사값으로 저장됩니다.
 
-```python
-# Python 예시
-print(0.1 + 0.2)  # 0.30000000000000004 (정확히 0.3이 아님!)
-print(0.1 + 0.2 == 0.3)  # False!
+```java
+// Java 예시
+System.out.println(0.1 + 0.2);  // 0.30000000000000004 (정확히 0.3이 아님!)
+System.out.println(0.1 + 0.2 == 0.3);  // false!
 ```
 
 ### 5.2 정밀도 한계에 따른 문제
@@ -177,11 +177,12 @@ double d = 1.0 / 3.0;      // 0.3333333333333333 (더 정확한 근사값)
 ```
 
 **연산 누적 오차:**
-```python
-result = 0.0
-for i in range(10):
-    result += 0.1
-print(result)  # 0.9999999999999999 (1.0이 아님!)
+```java
+double result = 0.0;
+for (int i = 0; i < 10; i++) {
+    result += 0.1;
+}
+System.out.println(result);  // 0.9999999999999999 (1.0이 아님!)
 ```
 
 ### 5.3 특수 값들 (Special Values)
@@ -214,27 +215,27 @@ BigDecimal tax = new BigDecimal("0.08");
 BigDecimal total = price.multiply(tax);  // 정확한 계산 보장
 ```
 
-**Python:**
-```python
-# decimal 모듈 사용
-from decimal import Decimal, getcontext
+**Java:**
+```java
+// BigDecimal 사용
+import java.math.BigDecimal;
 
-# 정밀도 설정
-getcontext().prec = 28
-
-price = Decimal('19.99')
-tax = Decimal('0.08')
-total = price * tax  # Decimal('1.5992')
+BigDecimal price = new BigDecimal("19.99");
+BigDecimal tax = new BigDecimal("0.08");
+BigDecimal total = price.multiply(tax);  // 1.5992
 ```
 
-**JavaScript:**
-```javascript
-// 숫자 대신 문자열로 계산
-function addMoney(a, b) {
+**Java:**
+```java
+// BigDecimal을 사용한 정확한 계산
+import java.math.BigDecimal;
+
+public BigDecimal addMoney(BigDecimal a, BigDecimal b) {
     // 센트 단위로 변환하여 정수 연산
-    const centsA = Math.round(parseFloat(a) * 100);
-    const centsB = Math.round(parseFloat(b) * 100);
-    return (centsA + centsB) / 100;
+    BigDecimal centsA = a.multiply(new BigDecimal("100"));
+    BigDecimal centsB = b.multiply(new BigDecimal("100"));
+    BigDecimal totalCents = centsA.add(centsB);
+    return totalCents.divide(new BigDecimal("100"));
 }
 ```
 
@@ -274,31 +275,56 @@ accountBalance = accountBalance.add(deposit);
 - **절대 오차:** |실제값 - 계산값|
 - **상대 오차:** |실제값 - 계산값| / |실제값|
 
-```python
-# 상대 오차가 중요한 경우
-def relative_error(actual, calculated):
-    return abs(actual - calculated) / abs(actual)
+```java
+// 상대 오차가 중요한 경우
+public double relativeError(double actual, double calculated) {
+    return Math.abs(actual - calculated) / Math.abs(actual);
+}
 
-# 매우 작은 수의 비교 시 주의
-a = 1e-15
-b = 1e-16
-print(a == b)  # False (좋음)
-print(abs(a - b) < 1e-15)  # 상대 오차 고려
+// 매우 작은 수의 비교 시 주의
+double a = 1e-15;
+double b = 1e-16;
+System.out.println(a == b);  // false (좋음)
+System.out.println(Math.abs(a - b) < 1e-15);  // 상대 오차 고려
 ```
 
 ### 7.3 데이터베이스 저장 전략
 
-**MySQL/PostgreSQL:**
-```sql
--- DECIMAL 타입 사용 (정확한 소수점 연산)
-CREATE TABLE financial_data (
-    amount DECIMAL(19, 4) NOT NULL  -- 총 19자리, 소수점 4자리
-);
+**Java (JDBC):**
+```java
+import java.sql.*;
+import java.math.BigDecimal;
 
--- 금액을 센트 단위로 저장
-CREATE TABLE payments (
-    amount_cents BIGINT NOT NULL  -- 센트 단위 저장
-);
+public class FinancialDAO {
+    // DECIMAL 타입 사용 (정확한 소수점 연산)
+    public void createFinancialTable(Connection conn) throws SQLException {
+        String sql = "CREATE TABLE financial_data (" +
+                    "id BIGINT PRIMARY KEY, " +
+                    "amount DECIMAL(19, 4) NOT NULL)";  // 총 19자리, 소수점 4자리
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+        }
+    }
+
+    // 금액을 센트 단위로 저장
+    public void createPaymentsTable(Connection conn) throws SQLException {
+        String sql = "CREATE TABLE payments (" +
+                    "id BIGINT PRIMARY KEY, " +
+                    "amount_cents BIGINT NOT NULL)";  // 센트 단위 저장
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+        }
+    }
+
+    // BigDecimal을 사용한 정확한 데이터 저장
+    public void saveFinancialData(Connection conn, BigDecimal amount) throws SQLException {
+        String sql = "INSERT INTO financial_data (amount) VALUES (?)";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setBigDecimal(1, amount);
+            pstmt.executeUpdate();
+        }
+    }
+}
 ```
 
 ---
@@ -308,14 +334,17 @@ CREATE TABLE payments (
 ### 8.1 흔한 실수들
 
 **문제 1: 부동 소수점 비교**
-```python
-# 잘못된 방법
-def is_equal(a, b):
-    return a == b  # 정밀도 문제로 실패할 수 있음
+```java
+// 잘못된 방법
+public boolean isEqual(double a, double b) {
+    return a == b;  // 정밀도 문제로 실패할 수 있음
+}
 
-# 올바른 방법
-def is_equal(a, b, tolerance=1e-9):
-    return abs(a - b) < tolerance
+// 올바른 방법
+public boolean isEqual(double a, double b, double tolerance) {
+    if (tolerance == 0) tolerance = 1e-9;
+    return Math.abs(a - b) < tolerance;
+}
 ```
 
 **문제 2: 오버플로우 무시**
@@ -337,18 +366,32 @@ public int multiply(int a, int b) {
 
 ### 8.2 디버깅 도구 활용
 
-**JavaScript:**
-```javascript
-// Number.isSafeInteger()로 안전한 정수 범위 확인
-console.log(Number.isSafeInteger(9007199254740991));  // true
-console.log(Number.isSafeInteger(9007199254740992));  // false
+**Java:**
+```java
+// 안전한 정수 범위 확인
+System.out.println(Long.MAX_VALUE);  // 9223372036854775807
+System.out.println(Integer.MAX_VALUE);  // 2147483647
+
+// BigInteger를 사용한 임의 정밀도 정수
+import java.math.BigInteger;
+
+BigInteger safeInt = new BigInteger("9007199254740991");
+BigInteger unsafeInt = new BigInteger("9007199254740992");
+System.out.println(safeInt);   // 9007199254740991
+System.out.println(unsafeInt); // 9007199254740992
 ```
 
-**Python:**
-```python
-import sys
-print(sys.float_info)  # 부동 소수점 정보 출력
-# max_exp=1024, max_10_exp=308, etc.
+**Java:**
+```java
+// 부동 소수점 정보 출력
+System.out.println("Float.MAX_VALUE: " + Float.MAX_VALUE);
+System.out.println("Double.MAX_VALUE: " + Double.MAX_VALUE);
+System.out.println("Float.MIN_VALUE: " + Float.MIN_VALUE);
+System.out.println("Double.MIN_VALUE: " + Double.MIN_VALUE);
+
+// Float와 Double의 정밀도 정보
+System.out.println("Float 정밀도: " + Float.SIZE + "비트");
+System.out.println("Double 정밀도: " + Double.SIZE + "비트");
 ```
 
 ---
@@ -402,17 +445,22 @@ print(sys.float_info)  # 부동 소수점 정보 출력
 
 ### 10.3 테스트 전략
 
-```python
-def test_precision():
-    """부동 소수점 정밀도 테스트"""
-    # 허용 오차 내에서 비교
-    assert abs(0.1 + 0.2 - 0.3) < 1e-10
+```java
+import java.math.BigDecimal;
 
-    # BigDecimal 등가물 테스트
-    from decimal import Decimal
-    d1 = Decimal('0.1')
-    d2 = Decimal('0.2')
-    assert d1 + d2 == Decimal('0.3')
+public void testPrecision() {
+    // 부동 소수점 정밀도 테스트
+    // 허용 오차 내에서 비교
+    double tolerance = 1e-10;
+    double result = 0.1 + 0.2 - 0.3;
+    assert Math.abs(result) < tolerance : "부동 소수점 오차가 허용 범위를 초과";
+
+    // BigDecimal 등가물 테스트
+    BigDecimal d1 = new BigDecimal("0.1");
+    BigDecimal d2 = new BigDecimal("0.2");
+    BigDecimal expected = new BigDecimal("0.3");
+    assert d1.add(d2).compareTo(expected) == 0 : "BigDecimal 계산이 정확하지 않음";
+}
 ```
 
 ---
@@ -493,53 +541,66 @@ System.out.println("오차: " + (410.96 - wrongResult));  // 약 0.001096원
 - 고빈도 거래로 인한 누적 계산 오차
 
 **실제 사례 (Binance 사고):**
-```javascript
-// JavaScript의 위험한 계산
-function calculateTradeAmount(price, amount) {
-    const total = price * amount;  // 부동 소수점 오차
-    return Math.round(total * 100000000) / 100000000;  // Satoshi 단위 변환
+```java
+// Java의 위험한 계산
+public double calculateTradeAmount(double price, double amount) {
+    double total = price * amount;  // 부동 소수점 오차
+    return Math.round(total * 100000000) / 100000000.0;  // Satoshi 단위 변환
 }
 
 // 문제 발생 케이스
-calculateTradeAmount(43250.12345678, 0.00001234);
+double result = calculateTradeAmount(43250.12345678, 0.00001234);
 // 기대값: 0.00053399
 // 실제값: 0.0005339900000000001 (오차 누적)
 ```
 
 **해결책: 정수 기반 계산**
-```javascript
-// 모든 금액을 최소 단위로 변환하여 정수 연산
-class CryptoCalculator {
-    constructor() {
-        // BTC: 8자리, USD: 2자리 정밀도
-        this.BTC_PRECISION = 100000000;  // 1e8
-        this.USD_PRECISION = 100;        // 1e2
-    }
+```java
+import java.math.BigDecimal;
+
+public class CryptoCalculator {
+    // BTC: 8자리, USD: 2자리 정밀도
+    private final long BTC_PRECISION = 100_000_000L;  // 1e8
+    private final long USD_PRECISION = 100L;          // 1e2
 
     // 금액을 정수로 변환
-    toSatoshi(btc) {
-        return Math.round(btc * this.BTC_PRECISION);
+    public long toSatoshi(double btc) {
+        return Math.round(btc * BTC_PRECISION);
     }
 
-    toCents(usd) {
-        return Math.round(usd * this.USD_PRECISION);
+    public long toCents(double usd) {
+        return Math.round(usd * USD_PRECISION);
     }
 
     // 정수 기반 계산
-    calculateTradeAmount(price, amount) {
-        const priceCents = this.toCents(price);
-        const amountSatoshi = this.toSatoshi(amount);
+    public double calculateTradeAmount(double price, double amount) {
+        long priceCents = toCents(price);
+        long amountSatoshi = toSatoshi(amount);
 
         // 정수 연산으로 정확한 계산
-        const totalCents = (priceCents * amountSatoshi) / this.BTC_PRECISION;
+        long totalCents = (priceCents * amountSatoshi) / BTC_PRECISION;
 
-        return totalCents / this.USD_PRECISION;
+        return (double) totalCents / USD_PRECISION;
+    }
+
+    // BigDecimal을 사용한 더 정확한 계산
+    public BigDecimal calculateTradeAmount(BigDecimal price, BigDecimal amount) {
+        BigDecimal btcPrecision = new BigDecimal(BTC_PRECISION);
+        BigDecimal usdPrecision = new BigDecimal(USD_PRECISION);
+
+        // 모든 계산을 BigDecimal로 수행
+        BigDecimal priceCents = price.multiply(usdPrecision);
+        BigDecimal amountSatoshi = amount.multiply(btcPrecision);
+
+        BigDecimal totalCents = priceCents.multiply(amountSatoshi).divide(btcPrecision);
+
+        return totalCents.divide(usdPrecision);
     }
 
     // 검증 함수
-    validateCalculation(price, amount, expectedTotal) {
-        const calculated = this.calculateTradeAmount(price, amount);
-        const difference = Math.abs(calculated - expectedTotal);
+    public boolean validateCalculation(double price, double amount, double expectedTotal) {
+        double calculated = calculateTradeAmount(price, amount);
+        double difference = Math.abs(calculated - expectedTotal);
         return difference < 0.00000001; // 1 Satoshi 이하 오차만 허용
     }
 }
@@ -563,67 +624,102 @@ class CryptoCalculator {
 - 64비트 double로도 부족한 정밀도 요구사항
 
 **실제 사례 (날씨 예측 모델):**
-```python
-# 불안정한 계산 - 오차가 증폭됨
-def simulate_weather(temperature, humidity, pressure):
-    # 복합 계산에서 오차 증폭
-    dew_point = temperature - ((100 - humidity) / 5)
-    vapor_pressure = 6.11 * 10 ** ((7.5 * dew_point) / (237.3 + dew_point))
-    actual_vapor = vapor_pressure * (humidity / 100)
+```java
+// 불안정한 계산 - 오차가 증폭됨
+public double simulateWeather(double temperature, double humidity, double pressure) {
+    // 복합 계산에서 오차 증폭
+    double dewPoint = temperature - ((100 - humidity) / 5);
+    double vaporPressure = 6.11 * Math.pow(10, (7.5 * dewPoint) / (237.3 + dewPoint));
+    double actualVapor = vaporPressure * (humidity / 100);
 
-    # 결과적으로 큰 오차 발생
-    return actual_vapor
+    // 결과적으로 큰 오차 발생
+    return actualVapor;
+}
 ```
 
 **해결책: 수치 안정성 개선**
-```python
-import numpy as np
-from decimal import Decimal, getcontext
+```java
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
+import java.util.Random;
 
-class StableCalculator:
-    def __init__(self):
-        # Decimal 정밀도 설정
-        getcontext().prec = 28  # 28자리 정밀도
+public class StableCalculator {
+    private final MathContext mc = new MathContext(28, RoundingMode.HALF_UP);
+    private final Random random = new Random();
 
-    def stable_dew_point(self, temperature, humidity):
-        """수치적으로 안정한 이슬점 계산"""
-        T = Decimal(str(temperature))
-        H = Decimal(str(humidity))
+    public StableCalculator() {
+        // BigDecimal 정밀도 설정 (28자리)
+    }
 
-        # Magnus 공식의 안정 버전
-        a = Decimal('17.625')
-        b = Decimal('243.04')
+    public double stableDewPoint(double temperature, double humidity) {
+        // 수치적으로 안정한 이슬점 계산
+        BigDecimal T = new BigDecimal(String.valueOf(temperature), mc);
+        BigDecimal H = new BigDecimal(String.valueOf(humidity), mc);
 
-        # ln(rh/100) 계산에서 수치 안정성 확보
-        ln_rh = Decimal(str(np.log(float(H) / 100)))
+        // Magnus 공식의 안정 버전
+        BigDecimal a = new BigDecimal("17.625", mc);
+        BigDecimal b = new BigDecimal("243.04", mc);
 
-        dew_point = b * (ln_rh + (a * T) / (b + T)) / (a - ln_rh - (a * T) / (b + T))
+        // ln(rh/100) 계산에서 수치 안정성 확보
+        BigDecimal rhRatio = H.divide(new BigDecimal("100", mc), mc);
+        BigDecimal lnRh = new BigDecimal(String.valueOf(Math.log(rhRatio.doubleValue())), mc);
 
-        return float(dew_point)
+        BigDecimal numerator = b.multiply(
+            lnRh.add(a.multiply(T, mc).divide(b.add(T, mc), mc), mc), mc
+        );
 
-    def validate_stability(self, temp_range, humidity_range, iterations=1000):
-        """수치 안정성 검증"""
-        max_error = Decimal('0')
-        max_relative_error = Decimal('0')
+        BigDecimal denominator = a.subtract(
+            lnRh.add(a.multiply(T, mc).divide(b.add(T, mc), mc), mc), mc
+        );
 
-        for _ in range(iterations):
-            temp = np.random.uniform(*temp_range)
-            humidity = np.random.uniform(*humidity_range)
+        BigDecimal dewPoint = numerator.divide(denominator, mc);
 
-            # 기존 vs 개선된 계산 비교
-            old_result = self.unstable_dew_point(temp, humidity)
-            new_result = self.stable_dew_point(temp, humidity)
+        return dewPoint.doubleValue();
+    }
 
-            error = abs(Decimal(str(new_result)) - Decimal(str(old_result)))
-            relative_error = error / Decimal(str(abs(new_result)))
+    public double unstableDewPoint(double temperature, double humidity) {
+        // 불안정한 기존 계산법
+        double dewPoint = temperature - ((100 - humidity) / 5);
+        double vaporPressure = 6.11 * Math.pow(10, (7.5 * dewPoint) / (237.3 + dewPoint));
+        return vaporPressure * (humidity / 100);
+    }
 
-            max_error = max(max_error, error)
-            max_relative_error = max(max_relative_error, relative_error)
+    public StabilityResult validateStability(double[] tempRange, double[] humidityRange, int iterations) {
+        // 수치 안정성 검증
+        BigDecimal maxError = BigDecimal.ZERO;
+        BigDecimal maxRelativeError = BigDecimal.ZERO;
 
-        return {
-            'max_absolute_error': float(max_error),
-            'max_relative_error': float(max_relative_error)
+        for (int i = 0; i < iterations; i++) {
+            double temp = tempRange[0] + random.nextDouble() * (tempRange[1] - tempRange[0]);
+            double humidity = humidityRange[0] + random.nextDouble() * (humidityRange[1] - humidityRange[0]);
+
+            // 기존 vs 개선된 계산 비교
+            double oldResult = unstableDewPoint(temp, humidity);
+            double newResult = stableDewPoint(temp, humidity);
+
+            BigDecimal error = new BigDecimal(String.valueOf(Math.abs(newResult - oldResult)), mc);
+            BigDecimal relativeError = error.divide(
+                new BigDecimal(String.valueOf(Math.abs(newResult)), mc), mc
+            );
+
+            maxError = maxError.max(error);
+            maxRelativeError = maxRelativeError.max(relativeError);
         }
+
+        return new StabilityResult(maxError.doubleValue(), maxRelativeError.doubleValue());
+    }
+
+    public static class StabilityResult {
+        public final double maxAbsoluteError;
+        public final double maxRelativeError;
+
+        public StabilityResult(double maxAbsoluteError, double maxRelativeError) {
+            this.maxAbsoluteError = maxAbsoluteError;
+            this.maxRelativeError = maxRelativeError;
+        }
+    }
+}
 ```
 
 **수치 안정성 기법:**
@@ -639,21 +735,21 @@ class StableCalculator:
 - 내비게이션 경로 최적화 실패
 
 **실제 문제:**
-```javascript
+```java
 // 부동 소수점으로 인한 거리 계산 오차
-function haversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371e3; // 지구 반지름 (미터)
+public double haversineDistance(double lat1, double lon1, double lat2, double lon2) {
+    final double R = 6371e3; // 지구 반지름 (미터)
 
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    double φ1 = Math.toRadians(lat1);
+    double φ2 = Math.toRadians(lat2);
+    double Δφ = Math.toRadians(lat2 - lat1);
+    double Δλ = Math.toRadians(lon2 - lon1);
 
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    double a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+               Math.cos(φ1) * Math.cos(φ2) *
+               Math.sin(Δλ/2) * Math.sin(Δλ/2);
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
     return R * c; // 미터 단위 거리
 }
@@ -736,39 +832,138 @@ public class GPSCalculator {
 - 정규화되지 않은 입력으로 인한 수치 불안정성
 
 **해결책 적용:**
-```python
-import torch
-import torch.nn as nn
+```java
+// Java에서 수치 안정성을 위한 간단한 신경망 예시
+// (실제로는 Deeplearning4j 등의 라이브러리 사용 권장)
+public class StableNeuralNetwork {
+    private final int inputSize = 784;
+    private final int hiddenSize1 = 256;
+    private final int hiddenSize2 = 128;
+    private final int outputSize = 10;
 
-class StableModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.layers = nn.ModuleList([
-            nn.Linear(784, 256),
-            nn.BatchNorm1d(256),  # 정규화로 수치 안정성 확보
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Linear(128, 10)
-        ])
+    // 가중치와 바이어스 (실제로는 행렬 라이브러리 사용)
+    private double[][] w1, w2, w3;
+    private double[] b1, b2, b3;
 
-    def forward(self, x):
-        # 입력 정규화
-        x = (x - x.mean()) / (x.std() + 1e-8)  # 수치 안정성을 위한 epsilon
+    public StableNeuralNetwork() {
+        // Xavier 초기화로 그래디언트 소실 방지
+        initializeWeights();
+    }
 
-        for layer in self.layers:
-            if isinstance(layer, nn.Linear):
-                # 가중치 초기화로 그래디언트 소실 방지
-                nn.init.xavier_uniform_(layer.weight)
-                x = layer(x)
+    private void initializeWeights() {
+        // 가중치 초기화 (Xavier uniform)
+        double scale1 = Math.sqrt(2.0 / (inputSize + hiddenSize1));
+        double scale2 = Math.sqrt(2.0 / (hiddenSize1 + hiddenSize2));
+        double scale3 = Math.sqrt(2.0 / (hiddenSize2 + outputSize));
 
-                # 수치 안정성을 위한 클리핑
-                x = torch.clamp(x, -10, 10)  # 그래디언트 폭발 방지
-            else:
-                x = layer(x)
+        w1 = initializeMatrix(hiddenSize1, inputSize, scale1);
+        w2 = initializeMatrix(hiddenSize2, hiddenSize1, scale2);
+        w3 = initializeMatrix(outputSize, hiddenSize2, scale3);
 
-        return x
+        b1 = new double[hiddenSize1];
+        b2 = new double[hiddenSize2];
+        b3 = new double[outputSize];
+    }
+
+    private double[][] initializeMatrix(int rows, int cols, double scale) {
+        double[][] matrix = new double[rows][cols];
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                matrix[i][j] = (Math.random() - 0.5) * 2 * scale;
+            }
+        }
+        return matrix;
+    }
+
+    public double[] forward(double[] input) {
+        // 입력 정규화 (배치 정규화 효과)
+        double mean = calculateMean(input);
+        double std = calculateStd(input, mean);
+        double[] normalizedInput = normalize(input, mean, std);
+
+        // 첫 번째 층
+        double[] hidden1 = matrixVectorMultiply(w1, normalizedInput);
+        addBias(hidden1, b1);
+        applyBatchNorm(hidden1);  // 배치 정규화
+        applyReLU(hidden1);
+        clipGradients(hidden1, -10, 10);  // 그래디언트 클리핑
+
+        // 두 번째 층
+        double[] hidden2 = matrixVectorMultiply(w2, hidden1);
+        addBias(hidden2, b2);
+        applyBatchNorm(hidden2);
+        applyReLU(hidden2);
+        clipGradients(hidden2, -10, 10);
+
+        // 출력 층
+        double[] output = matrixVectorMultiply(w3, hidden2);
+        addBias(output, b3);
+
+        return output;
+    }
+
+    // 헬퍼 메소드들
+    private double calculateMean(double[] array) {
+        double sum = 0;
+        for (double val : array) sum += val;
+        return sum / array.length;
+    }
+
+    private double calculateStd(double[] array, double mean) {
+        double sumSquared = 0;
+        for (double val : array) {
+            sumSquared += Math.pow(val - mean, 2);
+        }
+        return Math.sqrt(sumSquared / array.length) + 1e-8; // epsilon
+    }
+
+    private double[] normalize(double[] array, double mean, double std) {
+        double[] result = new double[array.length];
+        for (int i = 0; i < array.length; i++) {
+            result[i] = (array[i] - mean) / std;
+        }
+        return result;
+    }
+
+    private double[] matrixVectorMultiply(double[][] matrix, double[] vector) {
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+        double[] result = new double[rows];
+
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                result[i] += matrix[i][j] * vector[j];
+            }
+        }
+        return result;
+    }
+
+    private void addBias(double[] array, double[] bias) {
+        for (int i = 0; i < array.length; i++) {
+            array[i] += bias[i];
+        }
+    }
+
+    private void applyBatchNorm(double[] array) {
+        double mean = calculateMean(array);
+        double std = calculateStd(array, mean);
+        for (int i = 0; i < array.length; i++) {
+            array[i] = (array[i] - mean) / std;
+        }
+    }
+
+    private void applyReLU(double[] array) {
+        for (int i = 0; i < array.length; i++) {
+            array[i] = Math.max(0, array[i]);
+        }
+    }
+
+    private void clipGradients(double[] array, double min, double max) {
+        for (int i = 0; i < array.length; i++) {
+            array[i] = Math.max(min, Math.min(max, array[i]));
+        }
+    }
+}
 ```
 
 **수치 안정성 기법:**

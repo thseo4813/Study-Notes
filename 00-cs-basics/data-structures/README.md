@@ -20,7 +20,7 @@
 | 자료구조 | 개념 | 장점 | 단점 | 주요 사용 사례 |
 | --- | --- | --- | --- | --- |
 | **배열(Array)** | 메모리에 연속적으로 저장된 동일한 타입의 데이터 모음 | 인덱스로 O(1) 접근, 메모리 효율적 | 크기 고정, 중간 삽입/삭제 시 O(n) | 정적 데이터 저장, 행렬 연산 |
-| **연결 리스트(Linked List)** | 노드들이 링크로 연결된 구조 | 동적 크기 조정, 중간 삽입/삭제 O(1) | 임의 접근 O(n), 추가 메모리 사용 | 큐 구현, 빈번한 삽입/삭제 |
+| **연결 리스트(Linked List)** | 노드들이 링크로 연결된 구조 | **장점:** 동적 크기 조정, 중간 삽입/삭제 O(1), 메모리 단편화 저항<br>**단점:** 임의 접근 O(n), 추가 메모리(포인터) 사용, CPU 캐시 비효율 | **사용례:** 큐/스택 구현, 빈번한 중간 삽입/삭제, 메모리 단편화가 문제되는 환경<br>**주의:** n번째 요소 접근 시 처음부터 순차 탐색해야 함 |
 | **스택(Stack)** | LIFO(Last In, First Out) 방식의 자료구조 | 간단한 구현, 함수 호출 관리에 적합 | 제한된 접근 | 함수 호출 스택, 실행 취소(Undo) |
 | **큐(Queue)** | FIFO(First In, First Out) 방식의 자료구조 | 공정한 처리, 순서 보장 | 제한된 접근 | 작업 대기열, BFS 알고리즘 |
 
@@ -61,6 +61,249 @@
 
 ---
 
+## 3. 연결 리스트의 본질 이해
+
+### 3.1 연결 리스트가 왜 필요할까? (배열의 한계)
+
+연결 리스트를 이해하려면 먼저 **배열(Array)**의 문제를 파악해야 합니다.
+
+**배열의 메모리 구조:**
+```
+메모리 주소: 1000  1004  1008  1012  1016  1020
+데이터:     [10]  [20]  [30]  [40]  [50]  [  ]
+인덱스:       0     1     2     3     4     5
+```
+
+**배열의 문제점들:**
+1. **크기가 고정적:** 배열을 만들 때 크기를 미리 정해야 함
+2. **중간 삽입/삭제의 비효율성:** 중간에 데이터를 넣으려면 모든 요소를 이동시켜야 함
+
+```java
+// 배열에서 중간에 삽입하는 문제
+int[] arr = {10, 20, 30, 40, 50};  // 크기 5의 배열
+// 인덱스 2에 25를 삽입하려면?
+// 30, 40, 50을 모두 한 칸씩 뒤로 밀어야 함!
+```
+
+**연결 리스트의 해결책:**
+연결 리스트는 "데이터"와 "다음 데이터의 주소"를 함께 저장하는 방식입니다.
+
+### 3.2 연결 리스트의 기본 구성 요소
+
+**노드(Node)의 구조:**
+```
+[데이터] → [다음 노드 주소]
+```
+
+**단순한 연결 리스트의 모습:**
+```
+노드1: [10] → 주소(노드2)
+노드2: [20] → 주소(노드3)
+노드3: [30] → 주소(null, 끝 표시)
+```
+
+**Java로 표현하면:**
+```java
+class Node {
+    int data;      // 실제 데이터
+    Node next;     // 다음 노드를 가리키는 참조
+
+    Node(int data) {
+        this.data = data;
+        this.next = null;
+    }
+}
+```
+
+### 3.3 연결 리스트의 메모리 레이아웃
+
+**배열 vs 연결 리스트 메모리 비교:**
+
+**배열의 메모리 (연속 할당):**
+```
+메모리 주소: 0x1000    0x1004    0x1008    0x100C
+데이터:       [10]      [20]      [30]      [40]
+인덱스 계산: arr[0] = 시작주소 + (0 × 4)
+             arr[1] = 시작주소 + (1 × 4)
+```
+
+**연결 리스트의 메모리 (흩어진 할당):**
+```
+메모리 주소: 0x1000          0x2000          0x1500
+노드:       [10|0x2000]     [20|0x1500]     [30|null]
+```
+
+**왜 이런 구조가 유연할까?**
+- 각 노드가 독립적으로 메모리에 존재
+- 새로운 노드를 추가할 때 다른 노드들을 이동시킬 필요 없음
+- 메모리가 연속되지 않아도 됨 (단편화에 강함)
+
+### 3.4 연결 리스트의 종류
+
+**1. 단방향 연결 리스트 (Singly Linked List):**
+```
+Head → [10] → [20] → [30] → null
+```
+
+**2. 양방향 연결 리스트 (Doubly Linked List):**
+```
+Head ↔ [10] ↔ [20] ↔ [30] ↔ null
+       ↑       ↑       ↑
+     prev    prev    prev
+```
+
+**3. 환형 연결 리스트 (Circular Linked List):**
+```
+Head → [10] → [20] → [30] → (다시 Head로)
+```
+
+### 3.5 기본 연산들의 동작 원리
+
+**삽입 연산 (중간 삽입):**
+```java
+// [10] → [30] 사이에 [20]을 삽입
+// 1. 새로운 노드 생성: newNode = [20]
+// 2. newNode.next = node10.next  (즉, [30])
+// 3. node10.next = newNode
+
+// 결과: [10] → [20] → [30]
+```
+
+**삭제 연산:**
+```java
+// [20] 노드를 삭제
+// 1. node10.next = node20.next  ([30])
+// 2. node20는 이제 메모리에서 분리됨
+
+// 결과: [10] → [30]
+```
+
+**검색 연산:**
+```java
+// 값 30을 찾기
+Node current = head;
+while (current != null) {
+    if (current.data == 30) {
+        return current;  // 찾음!
+    }
+    current = current.next;
+}
+// 끝까지 못 찾으면 null 반환
+```
+
+### 3.6 연결 리스트의 장단점
+
+**장점:**
+1. **동적 크기:** 필요할 때마다 크기 조정 가능
+2. **효율적인 삽입/삭제:** 중간 위치에서도 O(1) 가능
+3. **메모리 단편화 저항:** 연속 메모리가 필요 없음
+
+**단점:**
+1. **느린 임의 접근:** n번째 요소를 찾으려면 처음부터 따라가야 함
+2. **추가 메모리 사용:** 각 노드마다 "다음 주소" 저장 공간 필요
+3. **CPU 캐시 비효율:** 메모리가 흩어져 있어 캐시 미스 발생
+
+### 3.7 실전 구현 예제
+
+```java
+public class LinkedList {
+    private Node head;
+    private int size;
+
+    // 노드 클래스
+    private static class Node {
+        int data;
+        Node next;
+
+        Node(int data) {
+            this.data = data;
+            this.next = null;
+        }
+    }
+
+    // 맨 앞에 추가
+    public void addFirst(int data) {
+        Node newNode = new Node(data);
+        newNode.next = head;
+        head = newNode;
+        size++;
+    }
+
+    // 특정 위치에 추가
+    public void add(int index, int data) {
+        if (index < 0 || index > size) {
+            throw new IndexOutOfBoundsException();
+        }
+
+        if (index == 0) {
+            addFirst(data);
+            return;
+        }
+
+        Node newNode = new Node(data);
+        Node current = head;
+
+        // 삽입할 위치의 이전 노드 찾기
+        for (int i = 0; i < index - 1; i++) {
+            current = current.next;
+        }
+
+        newNode.next = current.next;
+        current.next = newNode;
+        size++;
+    }
+
+    // 값 찾기
+    public boolean contains(int data) {
+        Node current = head;
+        while (current != null) {
+            if (current.data == data) {
+                return true;
+            }
+            current = current.next;
+        }
+        return false;
+    }
+
+    // 값 삭제
+    public boolean remove(int data) {
+        if (head == null) return false;
+
+        // 헤드가 삭제 대상인 경우
+        if (head.data == data) {
+            head = head.next;
+            size--;
+            return true;
+        }
+
+        Node current = head;
+        while (current.next != null) {
+            if (current.next.data == data) {
+                current.next = current.next.next;  // 연결 끊기
+                size--;
+                return true;
+            }
+            current = current.next;
+        }
+        return false;
+    }
+}
+```
+
+### 3.8 연결 리스트의 실무 활용
+
+**언제 연결 리스트를 사용할까?**
+1. **빈번한 삽입/삭제:** 음악 플레이리스트, 브라우저 히스토리
+2. **크기가 동적으로 변함:** 사용자 목록, 작업 큐
+3. **메모리가 제한적:** 임베디드 시스템에서 메모리 단편화 방지
+
+**언제 배열을 사용할까?**
+1. **빠른 임의 접근 필요:** 게임 캐릭터 배열, 행렬 연산
+2. **크기가 고정적:** 달력, 색상 팔레트
+3. **CPU 캐시 효율 중요:** 실시간 그래픽스 처리
+
+---
+
 ## 4. 자료구조 선택 가이드
 
 ### 4.1 문제 유형별 추천
@@ -87,50 +330,98 @@
 
 ### 5.1 캐시 구현 (LRU Cache)
 
-```python
-from collections import OrderedDict
+```java
+import java.util.LinkedHashMap;
+import java.util.Map;
 
-class LRUCache:
-    def __init__(self, capacity: int):
-        self.cache = OrderedDict()
-        self.capacity = capacity
+public class LRUCache<K, V> extends LinkedHashMap<K, V> {
+    private final int capacity;
 
-    def get(self, key: int) -> int:
-        if key not in self.cache:
-            return -1
-        # 최근 사용으로 이동
-        self.cache.move_to_end(key)
-        return self.cache[key]
+    public LRUCache(int capacity) {
+        // accessOrder=true로 설정하여 접근 순서 유지
+        super(capacity + 1, 1.0f, true);
+        this.capacity = capacity;
+    }
 
-    def put(self, key: int, value: int) -> None:
-        if key in self.cache:
-            self.cache.move_to_end(key)
-        self.cache[key] = value
+    @Override
+    protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+        // 용량 초과 시 가장 오래된 항목 제거
+        return size() > capacity;
+    }
 
-        if len(self.cache) > self.capacity:
-            # 가장 오래된 항목 제거
-            self.cache.popitem(last=False)
+    // 사용 예시
+    public static void main(String[] args) {
+        LRUCache<Integer, String> cache = new LRUCache<>(3);
+
+        cache.put(1, "A");  // [1:A]
+        cache.put(2, "B");  // [1:A, 2:B]
+        cache.put(3, "C");  // [1:A, 2:B, 3:C]
+
+        cache.get(1);       // 1번 키 접근, 최근으로 이동
+        cache.put(4, "D");  // 용량 초과, 가장 오래된 2:B 제거
+                            // 결과: [3:C, 1:A, 4:D]
+    }
+}
 ```
 
-### 5.2 우선순위 큐 구현 (Python heapq)
+### 5.2 우선순위 큐 구현 (Java PriorityQueue)
 
-```python
-import heapq
+```java
+import java.util.PriorityQueue;
+import java.util.Comparator;
 
-# 최소 힙으로 최대 우선순위 큐 구현
-class PriorityQueue:
-    def __init__(self):
-        self.heap = []
+public class MaxPriorityQueue<T> {
+    private PriorityQueue<Element<T>> queue;
 
-    def push(self, item, priority):
-        # 음수로 변환하여 최대 힙처럼 동작
-        heapq.heappush(self.heap, (-priority, item))
+    // 요소와 우선순위를 함께 저장하는 클래스
+    private static class Element<T> implements Comparable<Element<T>> {
+        T item;
+        int priority;
 
-    def pop(self):
-        return heapq.heappop(self.heap)[1]
+        Element(T item, int priority) {
+            this.item = item;
+            this.priority = priority;
+        }
 
-    def is_empty(self):
-        return len(self.heap) == 0
+        @Override
+        public int compareTo(Element<T> other) {
+            // 내림차순 정렬 (최대 힙)
+            return Integer.compare(other.priority, this.priority);
+        }
+    }
+
+    public MaxPriorityQueue() {
+        this.queue = new PriorityQueue<>();
+    }
+
+    public void push(T item, int priority) {
+        queue.offer(new Element<>(item, priority));
+    }
+
+    public T pop() {
+        if (queue.isEmpty()) {
+            throw new IllegalStateException("Queue is empty");
+        }
+        return queue.poll().item;
+    }
+
+    public boolean isEmpty() {
+        return queue.isEmpty();
+    }
+
+    // 사용 예시
+    public static void main(String[] args) {
+        MaxPriorityQueue<String> pq = new MaxPriorityQueue<>();
+
+        pq.push("Task A", 3);  // 우선순위 3
+        pq.push("Task B", 1);  // 우선순위 1
+        pq.push("Task C", 5);  // 우선순위 5
+
+        System.out.println(pq.pop());  // "Task C" (우선순위 5)
+        System.out.println(pq.pop());  // "Task A" (우선순위 3)
+        System.out.println(pq.pop());  // "Task B" (우선순위 1)
+    }
+}
 ```
 
 ---
@@ -161,14 +452,22 @@ class PriorityQueue:
 - 팔로워 수에 따른 성능 저하 (N+1 쿼리 문제)
 
 **기존 아키텍처:**
-```python
-# 비효율적인 구현
-def get_user_feed(user_id):
-    followers = get_followers(user_id)  # 수십~수백명
-    posts = []
-    for follower in followers:
-        posts.extend(get_recent_posts(follower, limit=10))  # N번 DB 쿼리!
-    return sorted(posts, key=lambda x: x.created_at, reverse=True)[:50]
+```java
+// 비효율적인 구현
+public List<Post> getUserFeed(int userId) {
+    List<Integer> followers = getFollowers(userId);  // 수십~수백명
+    List<Post> posts = new ArrayList<>();
+
+    for (Integer followerId : followers) {
+        posts.addAll(getRecentPosts(followerId, 10));  // N번 DB 쿼리!
+    }
+
+    // 최신순 정렬 후 상위 50개 반환
+    return posts.stream()
+                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                .limit(50)
+                .collect(Collectors.toList());
+}
 ```
 
 **해결책 적용:**
@@ -176,34 +475,56 @@ def get_user_feed(user_id):
 2. **Fan-out on Write 전략:** 포스트 작성 시점에 모든 팔로워의 피드에 추가
 3. **메모리 최적화:** LRU 캐시로 오래된 포스트 자동 제거
 
-```python
-import redis
+```java
+import redis.clients.jedis.Jedis;
+import java.util.List;
+import java.util.Set;
 
-class FeedManager:
-    def __init__(self):
-        self.redis = redis.Redis()
+public class FeedManager {
+    private final Jedis redis;
 
-    def post_created(self, user_id, post_id, timestamp):
-        """포스트 작성 시 모든 팔로워의 피드에 추가"""
-        followers = self.get_followers(user_id)
+    public FeedManager() {
+        this.redis = new Jedis("localhost", 6379);
+    }
 
-        for follower_id in followers:
-            feed_key = f"feed:{follower_id}"
-            # Sorted Set에 추가 (timestamp를 score로 사용)
-            self.redis.zadd(feed_key, {post_id: timestamp})
+    public void postCreated(int userId, int postId, long timestamp) {
+        // 포스트 작성 시 모든 팔로워의 피드에 추가
+        List<Integer> followers = getFollowers(userId);
 
-            # 피드 크기 제한 (최근 1000개만 유지)
-            self.redis.zremrangebyrank(feed_key, 0, -1001)
+        for (Integer followerId : followers) {
+            String feedKey = "feed:" + followerId;
 
-    def get_feed(self, user_id, page=0, size=50):
-        """O(log N)으로 빠른 조회"""
-        feed_key = f"feed:{user_id}"
-        start = page * size
-        end = start + size - 1
+            // Sorted Set에 추가 (timestamp를 score로 사용)
+            redis.zadd(feedKey, timestamp, String.valueOf(postId));
 
-        # 최신순으로 조회
-        post_ids = self.redis.zrevrange(feed_key, start, end)
-        return self.get_posts_by_ids(post_ids)
+            // 피드 크기 제한 (최근 1000개만 유지)
+            redis.zremrangeByRank(feedKey, 0, -1001);
+        }
+    }
+
+    public List<Post> getFeed(int userId, int page, int size) {
+        // O(log N)으로 빠른 조회
+        String feedKey = "feed:" + userId;
+        int start = page * size;
+        int end = start + size - 1;
+
+        // 최신순으로 조회 (ZREVRANGE 사용)
+        Set<String> postIds = redis.zrevrange(feedKey, start, end);
+
+        return getPostsByIds(postIds);
+    }
+
+    // 헬퍼 메소드들
+    private List<Integer> getFollowers(int userId) {
+        // 팔로워 목록 조회 로직
+        return List.of(); // 구현 생략
+    }
+
+    private List<Post> getPostsByIds(Set<String> postIds) {
+        // 포스트 ID들로 실제 포스트 조회
+        return List.of(); // 구현 생략
+    }
+}
 ```
 
 **결과:**
@@ -223,31 +544,46 @@ class FeedManager:
 2. **Atomic 연산으로 동시성 해결**
 3. **메모리 효율적 설계**
 
-```python
-class Leaderboard:
-    def __init__(self):
-        self.redis = redis.Redis()
-        self.key = "game_leaderboard"
+```java
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.Transaction;
+import java.util.List;
+import java.util.Map;
 
-    def update_score(self, player_id, score_change):
-        """원자적 점수 업데이트"""
-        with self.redis.pipeline() as pipe:
-            pipe.zincrby(self.key, score_change, player_id)
-            pipe.zrevrank(self.key, player_id)  # 새 순위 계산
-            result = pipe.execute()
-            return result[1]  # 새 순위 반환
+public class Leaderboard {
+    private final Jedis redis;
+    private final String key;
 
-    def get_top_players(self, count=10):
-        """상위 플레이어 조회 (O(log N))"""
-        return self.redis.zrevrange(self.key, 0, count-1, withscores=True)
+    public Leaderboard() {
+        this.redis = new Jedis("localhost", 6379);
+        this.key = "game_leaderboard";
+    }
 
-    def get_player_rank(self, player_id):
-        """특정 플레이어 순위 조회 (O(log N))"""
-        return self.redis.zrevrank(self.key, player_id)
+    public Long updateScore(String playerId, double scoreChange) {
+        // 원자적 점수 업데이트 및 순위 반환
+        Transaction tx = redis.multi();
+        tx.zincrby(key, scoreChange, playerId);
+        tx.zrevrank(key, playerId);  // 새 순위 계산
+        List<Object> result = tx.exec();
 
-    def get_rank_range(self, start_rank, end_rank):
-        """순위 범위 조회"""
-        return self.redis.zrevrange(self.key, start_rank, end_rank, withscores=True)
+        return (Long) result.get(1);  // 새 순위 반환
+    }
+
+    public Map<String, Double> getTopPlayers(int count) {
+        // 상위 플레이어 조회 (O(log N))
+        return redis.zrevrangeWithScores(key, 0, count - 1);
+    }
+
+    public Long getPlayerRank(String playerId) {
+        // 특정 플레이어 순위 조회 (O(log N))
+        return redis.zrevrank(key, playerId);
+    }
+
+    public Map<String, Double> getRankRange(long startRank, long endRank) {
+        // 순위 범위 조회
+        return redis.zrevrangeWithScores(key, startRank, endRank);
+    }
+}
 ```
 
 **성능 비교:**
@@ -271,52 +607,82 @@ class Leaderboard:
 2. **Base62 인코딩으로 키 생성**
 3. **분산 캐시로 성능 최적화**
 
-```python
-import hashlib
-import redis
+```java
+import redis.clients.jedis.Jedis;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
 
-class URLShortener:
-    def __init__(self):
-        self.redis = redis.Redis()
-        self.counter_key = "url_counter"
-        self.url_prefix = "https://short.ly/"
+public class URLShortener {
+    private final Jedis redis;
+    private final String counterKey;
+    private final String urlPrefix;
+    private final String charset;
 
-    def shorten_url(self, long_url):
-        """URL 단축"""
-        # 중복 URL 처리
-        existing_key = self.redis.get(f"url:{long_url}")
-        if existing_key:
-            return self.url_prefix + existing_key.decode()
+    public URLShortener() {
+        this.redis = new Jedis("localhost", 6379);
+        this.counterKey = "url_counter";
+        this.urlPrefix = "https://short.ly/";
+        this.charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    }
 
-        # 새 키 생성
-        counter = self.redis.incr(self.counter_key)
-        short_key = self.encode_base62(counter)
+    public String shortenUrl(String longUrl) {
+        // 중복 URL 처리
+        String existingKey = redis.get("url:" + longUrl);
+        if (existingKey != null) {
+            return urlPrefix + existingKey;
+        }
 
-        # 저장 (양방향 매핑)
-        self.redis.set(f"url:{long_url}", short_key)
-        self.redis.set(f"key:{short_key}", long_url)
+        // 새 키 생성
+        long counter = redis.incr(counterKey);
+        String shortKey = encodeBase62(counter);
 
-        # TTL 설정 (선택적)
-        self.redis.expire(f"url:{long_url}", 86400 * 365)  # 1년
-        self.redis.expire(f"key:{short_key}", 86400 * 365)
+        // 저장 (양방향 매핑)
+        redis.set("url:" + longUrl, shortKey);
+        redis.set("key:" + shortKey, longUrl);
 
-        return self.url_prefix + short_key
+        // TTL 설정 (선택적) - 1년
+        int oneYearSeconds = 86400 * 365;
+        redis.expire("url:" + longUrl, oneYearSeconds);
+        redis.expire("key:" + shortKey, oneYearSeconds);
 
-    def expand_url(self, short_key):
-        """원래 URL 조회"""
-        return self.redis.get(f"key:{short_key}")
+        return urlPrefix + shortKey;
+    }
 
-    def encode_base62(self, num):
-        """숫자를 Base62 문자열로 변환"""
-        chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        if num == 0:
-            return chars[0]
+    public String expandUrl(String shortKey) {
+        // 원래 URL 조회
+        return redis.get("key:" + shortKey);
+    }
 
-        result = []
-        while num > 0:
-            result.append(chars[num % 62])
-            num //= 62
-        return ''.join(reversed(result))
+    private String encodeBase62(long num) {
+        // 숫자를 Base62 문자열로 변환
+        if (num == 0) {
+            return String.valueOf(charset.charAt(0));
+        }
+
+        StringBuilder result = new StringBuilder();
+        while (num > 0) {
+            result.append(charset.charAt((int)(num % 62)));
+            num /= 62;
+        }
+        return result.reverse().toString();
+    }
+
+    // MD5 해시를 사용한 추가 검증 메소드 (선택적)
+    private String generateHash(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
 ```
 
 **설계 고려사항:**
