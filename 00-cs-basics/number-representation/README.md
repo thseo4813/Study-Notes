@@ -239,10 +239,45 @@ public BigDecimal addMoney(BigDecimal a, BigDecimal b) {
 }
 ```
 
+**Go:**
+```go
+// big 패키지를 사용한 임의 정밀도 계산
+import (
+    "fmt"
+    "math/big"
+)
+
+// BigInt를 사용한 정확한 정수 계산
+func calculateFactorial(n int64) *big.Int {
+    result := big.NewInt(1)
+    for i := int64(2); i <= n; i++ {
+        result.Mul(result, big.NewInt(i))
+    }
+    return result
+}
+
+// BigFloat를 사용한 고정밀도 실수 계산
+func calculatePiHighPrecision() *big.Float {
+    pi := new(big.Float).SetPrec(100) // 100비트 정밀도
+    pi.SetString("3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679")
+    return pi
+}
+
+// 금융 계산 예시
+func addMoney(a, b *big.Float) *big.Float {
+    // 센트 단위로 변환하여 계산
+    centsA := new(big.Float).Mul(a, big.NewFloat(100))
+    centsB := new(big.Float).Mul(b, big.NewFloat(100))
+    totalCents := new(big.Float).Add(centsA, centsB)
+    return new(big.Float).Quo(totalCents, big.NewFloat(100))
+}
+```
+
 ### 6.2 언어별 기본 타입 비교
 
 | 언어 | 정수 타입 | 실수 타입 | 임의 정밀도 |
 | --- | --- | --- | --- |
+| **Go** | int, int64 | float32, float64 | math/big (big.Int, big.Float) |
 | **C/C++** | int32_t, int64_t | float, double | 없음 (라이브러리 필요) |
 | **Java** | int, long | float, double | BigInteger, BigDecimal |
 | **Python** | int (임의 크기) | float | decimal.Decimal |
@@ -250,88 +285,9 @@ public BigDecimal addMoney(BigDecimal a, BigDecimal b) {
 
 ---
 
-## 7. 실무 적용 사례와 베스트 프랙티스
+## 7. 디버깅과 문제 해결
 
-### 7.1 금융 시스템에서의 적용
-
-**문제 상황:**
-```java
-// 위험한 코드
-float accountBalance = 1000000.00f;
-accountBalance += 0.01f;  // 정밀도 손실 발생 가능
-```
-
-**올바른 해결:**
-```java
-// Java: BigDecimal 사용
-BigDecimal accountBalance = new BigDecimal("1000000.00");
-BigDecimal deposit = new BigDecimal("0.01");
-accountBalance = accountBalance.add(deposit);
-```
-
-### 7.2 과학 계산에서의 주의사항
-
-**상대 오차 vs 절대 오차:**
-- **절대 오차:** |실제값 - 계산값|
-- **상대 오차:** |실제값 - 계산값| / |실제값|
-
-```java
-// 상대 오차가 중요한 경우
-public double relativeError(double actual, double calculated) {
-    return Math.abs(actual - calculated) / Math.abs(actual);
-}
-
-// 매우 작은 수의 비교 시 주의
-double a = 1e-15;
-double b = 1e-16;
-System.out.println(a == b);  // false (좋음)
-System.out.println(Math.abs(a - b) < 1e-15);  // 상대 오차 고려
-```
-
-### 7.3 데이터베이스 저장 전략
-
-**Java (JDBC):**
-```java
-import java.sql.*;
-import java.math.BigDecimal;
-
-public class FinancialDAO {
-    // DECIMAL 타입 사용 (정확한 소수점 연산)
-    public void createFinancialTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE financial_data (" +
-                    "id BIGINT PRIMARY KEY, " +
-                    "amount DECIMAL(19, 4) NOT NULL)";  // 총 19자리, 소수점 4자리
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
-    }
-
-    // 금액을 센트 단위로 저장
-    public void createPaymentsTable(Connection conn) throws SQLException {
-        String sql = "CREATE TABLE payments (" +
-                    "id BIGINT PRIMARY KEY, " +
-                    "amount_cents BIGINT NOT NULL)";  // 센트 단위 저장
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
-    }
-
-    // BigDecimal을 사용한 정확한 데이터 저장
-    public void saveFinancialData(Connection conn, BigDecimal amount) throws SQLException {
-        String sql = "INSERT INTO financial_data (amount) VALUES (?)";
-        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setBigDecimal(1, amount);
-            pstmt.executeUpdate();
-        }
-    }
-}
-```
-
----
-
-## 8. 디버깅과 문제 해결
-
-### 8.1 흔한 실수들
+### 7.1 흔한 실수들
 
 **문제 1: 부동 소수점 비교**
 ```java
@@ -364,7 +320,7 @@ public int multiply(int a, int b) {
 }
 ```
 
-### 8.2 디버깅 도구 활용
+### 7.2 디버깅 도구 활용
 
 **Java:**
 ```java
@@ -409,6 +365,28 @@ System.out.println("Double 정밀도: " + Double.SIZE + "비트");
 
 양자 컴퓨터에서는 전통적인 이진수 표현이 아닌 **양자 비트(Qubit)**를 사용하므로, 현재의 부동 소수점 문제가 해결될 수 있습니다.
 
+**현재 연구 동향:**
+- **양자 부동 소수점:** Qubit 기반의 새로운 숫자 표현 방식 개발 중
+- **Shor 알고리즘:** 대수 연산을 이용한 인수분해로 암호화 체계 변화 예고
+- **Grover 알고리즘:** 검색 성능 2√N으로 향상시켜 데이터베이스 최적화
+
+**실무적 영향:**
+```go
+// 양자 컴퓨팅 시대의 고전적 vs 양자적 접근
+// 고전적: O(2^n) - 지수 시간 복잡도
+func classicalFactorization(n int) []int {
+    // 폴라드 로 알고리즘 등 - 여전히 지수 시간
+    return []int{}
+}
+
+// 양자적: O(n^2) - 다항식 시간 복잡도 (Shor 알고리즘)
+func quantumFactorization(n int) []int {
+    // 양자 컴퓨터에서 n^2 시간에 인수분해 가능
+    // 현재 RSA-2048 암호화의 기반 흔들림
+    return []int{}
+}
+```
+
 ### 9.3 대안적 숫자 표현
 
 **고정 소수점의 부활:**
@@ -418,6 +396,36 @@ System.out.println("Double 정밀도: " + Double.SIZE + "비트");
 **인터벌 연산(Interval Arithmetic):**
 - 값의 범위를 계산하여 불확실성 표현
 - 과학 계산에서 정확도 향상
+
+### 9.4 현재 진행 중인 혁신 기술들
+
+**포지티브(Positive) 컴퓨팅:**
+- 음수를 사용하지 않는 새로운 계산 패러다임
+- 에너지 효율성 향상으로 모바일/임베디드 최적화
+
+**신경망 가속기(Neuromorphic Computing):**
+```python
+# 전통적 vs 신경망 기반 숫자 처리
+import numpy as np
+
+# 전통적 부동 소수점
+def traditional_fft(signal):
+    return np.fft.fft(signal)  # O(n log n)
+
+# 신경망 기반 (연구 중)
+def neuromorphic_fft(signal):
+    # 스파이크 기반 처리로 에너지 효율성 향상
+    # 현재 IBM TrueNorth, Intel Loihi 등에서 연구 중
+    return signal  # 개념적 구현
+```
+
+**멀티-프리시전 컴퓨팅:**
+- FP8, FP16, BF16 등 다양한 정밀도 동시 지원
+- AI 모델 학습/추론 최적화
+
+**하드웨어 기반 BigInteger:**
+- CPU/GPU 레벨에서 임의 정밀도 정수 지원
+- 암호화, 과학 계산 성능 대폭 향상
 
 ---
 
@@ -443,6 +451,106 @@ System.out.println("Double 정밀도: " + Double.SIZE + "비트");
 
 프로젝트 요구사항에 따라 적절한 타협점을 찾으세요.
 
+### 10.4 아키텍처 설계 시 고려사항
+
+**데이터베이스 설계:**
+```sql
+-- 금융 데이터: DECIMAL 사용
+CREATE TABLE financial_transactions (
+    id BIGINT PRIMARY KEY,
+    amount DECIMAL(19, 4) NOT NULL,  -- 15자리 정수 + 4자리 소수점
+    currency VARCHAR(3) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 과학 데이터: 정밀도 지정
+CREATE TABLE scientific_measurements (
+    id BIGINT PRIMARY KEY,
+    value DECIMAL(30, 15) NOT NULL,  -- 고정밀도 저장
+    uncertainty DECIMAL(10, 8),      -- 불확실성 범위
+    unit VARCHAR(20)
+);
+```
+
+**API 설계:**
+```java
+// 클라이언트 ↔ 서버 간 안전한 숫자 전송
+@RestController
+public class FinancialAPI {
+    @PostMapping("/transfer")
+    public ResponseEntity<?> transferMoney(@RequestBody TransferRequest request) {
+        // 문자열로 받은 금액을 BigDecimal로 변환
+        BigDecimal amount = new BigDecimal(request.getAmountString());
+
+        // 유효성 검증
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ResponseEntity.badRequest().body("금액은 0보다 커야 합니다");
+        }
+
+        // 센트 단위로 변환하여 저장
+        long cents = amount.multiply(new BigDecimal("100")).longValue();
+        // ... 저장 로직
+    }
+}
+```
+
+### 10.5 모니터링과 디버깅 전략
+
+**정밀도 모니터링:**
+```java
+public class PrecisionMonitor {
+    private static final Logger logger = LoggerFactory.getLogger(PrecisionMonitor.class);
+
+    public void monitorCalculation(BigDecimal input, BigDecimal result, String operation) {
+        // 계산 정밀도 검증
+        int inputPrecision = input.precision();
+        int resultPrecision = result.precision();
+
+        if (resultPrecision > inputPrecision + 10) {  // 비정상적 정밀도 증가
+            logger.warn("의심스러운 정밀도 변화: {} -> {} in operation {}",
+                       inputPrecision, resultPrecision, operation);
+        }
+
+        // 오차 범위 검증
+        BigDecimal expectedRange = calculateExpectedRange(input);
+        if (result.compareTo(expectedRange) > 0) {
+            logger.error("계산 결과가 예상 범위를 벗어남: {} in operation {}",
+                        result, operation);
+        }
+    }
+}
+```
+
+**성능 프로파일링:**
+```java
+public class PerformanceProfiler {
+    public static void comparePrecisionPerformance() {
+        int iterations = 1000000;
+
+        // Double 성능 측정
+        long start = System.nanoTime();
+        double doubleResult = 0.0;
+        for (int i = 0; i < iterations; i++) {
+            doubleResult += 0.1;
+        }
+        long doubleTime = System.nanoTime() - start;
+
+        // BigDecimal 성능 측정
+        start = System.nanoTime();
+        BigDecimal decimalResult = BigDecimal.ZERO;
+        BigDecimal increment = new BigDecimal("0.1");
+        for (int i = 0; i < iterations; i++) {
+            decimalResult = decimalResult.add(increment);
+        }
+        long decimalTime = System.nanoTime() - start;
+
+        System.out.printf("Double: %.3f ms, BigDecimal: %.3f ms (%.1fx slower)%n",
+                         doubleTime / 1e6, decimalTime / 1e6,
+                         (double) decimalTime / doubleTime);
+    }
+}
+```
+
 ### 10.3 테스트 전략
 
 ```java
@@ -465,9 +573,9 @@ public void testPrecision() {
 
 ---
 
-## 11. 실무 문제 해결 사례
+## 8. 실무 문제 해결 사례
 
-### 11.1 은행 이자 계산 시스템의 정밀도 문제
+### 8.1 은행 이자 계산 시스템의 정밀도 문제
 
 **문제 상황:**
 - 수십억 원대의 대출 이자 계산
@@ -533,7 +641,7 @@ System.out.println("오차: " + (410.96 - wrongResult));  // 약 0.001096원
 - **법적 리스크:** 고객과의 분쟁 발생 가능성
 - **감사 요구사항:** 모든 계산의 추적 가능성
 
-### 11.2 암호화폐 거래소의 정밀도 문제
+### 8.2 암호화폐 거래소의 정밀도 문제
 
 **문제 상황:**
 - 비트코인 가격: $43,250.12345678
@@ -617,7 +725,7 @@ public class CryptoCalculator {
 - **성능:** 정수 연산으로 더 빠른 처리
 - **안정성:** 오차 누적 방지
 
-### 11.3 과학 시뮬레이션의 수치 안정성 문제
+### 8.3 과학 시뮬레이션의 수치 안정성 문제
 
 **문제 상황:**
 - 유체 역학 시뮬레이션에서 미세한 오차가 큰 결과 차이 야기
@@ -727,7 +835,7 @@ public class StableCalculator {
 2. ** Dekker's Algorithm:** 두 개의 부동 소수점으로 정밀도 향상
 3. **Interval Arithmetic:** 오차 범위 추적
 
-### 11.4 GPS 좌표 계산의 정밀도 문제
+### 8.4 GPS 좌표 계산의 정밀도 문제
 
 **문제 상황:**
 - GPS 좌표: 37.7749, -122.4194 (샌프란시스코)
@@ -825,7 +933,7 @@ public class GPSCalculator {
 - **성능:** 모바일 디바이스에서도 실시간 계산 가능
 - **배터리 효율:** 부동 소수점보다 낮은 전력 소비
 
-### 11.5 머신러닝 모델의 수치 안정성
+### 8.5 머신러닝 모델의 수치 안정성
 
 **문제 상황:**
 - 딥러닝 모델에서 그래디언트 소실/폭발
@@ -971,6 +1079,309 @@ public class StableNeuralNetwork {
 2. **Gradient Clipping:** 그래디언트 폭발 방지
 3. **Weight Initialization:** Xavier/He 초기화
 4. **Mixed Precision Training:** FP16으로 메모리 효율화
+
+---
+
+## 11. URL 단축 서비스의 인코딩 최적화
+
+### 11.1 URL 단축 서비스의 수학적 기반
+
+**문제 상황:**
+- 긴 URL을 짧은 키로 변환하여 수십억 개의 매핑 관리
+- 빠른 조회와 높은 동시성 요구
+- bit.ly, t.co, goo.gl 스타일 서비스 구현
+
+**해결책 적용:**
+- Hash Table + 데이터베이스 조합
+- Base62 인코딩으로 키 생성
+- 분산 캐시로 성능 최적화
+
+### 11.2 다양한 인코딩 방식의 특징 분석
+
+URL 단축 서비스에서 숫자 ID를 짧은 문자열로 변환할 때 사용하는 인코딩 방식들의 특징을 비교해보겠습니다.
+
+#### Base62 인코딩 (가장 일반적)
+```java
+// Base62: 0-9, a-z, A-Z (총 62개 문자)
+public class Base62Encoder {
+    private static final String BASE62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    public static String encode(long value) {
+        if (value == 0) return "0";
+
+        StringBuilder sb = new StringBuilder();
+        while (value > 0) {
+            sb.append(BASE62.charAt((int)(value % 62)));
+            value /= 62;
+        }
+        return sb.reverse().toString();
+    }
+
+    public static long decode(String value) {
+        long result = 0;
+        for (char c : value.toCharArray()) {
+            result = result * 62 + BASE62.indexOf(c);
+        }
+        return result;
+    }
+}
+```
+
+**특징:**
+- **문자 집합:** 62개 (0-9, a-z, A-Z)
+- **URL 안전성:** 완전 URL 안전 (특수문자 없음)
+- **길이 효율성:** ID 1,000,000 → "4C92" (4자리)
+- **대소문자 구분:** 예 (URL에서 중요)
+- **장점:** 짧은 길이, URL 친화적
+- **단점:** 구현 복잡도 높음
+
+#### Base64 인코딩 (웹 표준)
+```java
+// Base64: A-Z, a-z, 0-9, +, / (총 64개 + 패딩 =)
+public class Base64URLSafeEncoder {
+    private static final String BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+    public static String encode(long value) {
+        // 표준 Base64보다 URL-safe 버전 사용
+        return java.util.Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(java.nio.ByteBuffer.allocate(8).putLong(value).array())
+                .replace('+', '-').replace('/', '_'); // URL 안전하게 변환
+    }
+
+    public static long decode(String value) {
+        // URL-safe Base64 디코딩
+        String standardBase64 = value.replace('-', '+').replace('_', '/');
+        byte[] bytes = java.util.Base64.getDecoder().decode(standardBase64);
+        return java.nio.ByteBuffer.wrap(bytes).getLong();
+    }
+}
+```
+
+**특징:**
+- **문자 집합:** 64개 + 패딩 문자
+- **표준화:** RFC 4648 표준
+- **길이 효율성:** ID 1,000,000 → "4C92" (4자리)
+- **장점:** 표준화, 널리 사용됨
+- **단점:** URL에서 +, /, = 문자 문제
+
+#### Base36 인코딩 (단순함)
+```java
+// Base36: 0-9, a-z (총 36개 문자)
+public class Base36Encoder {
+    private static final String BASE36 = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+    public static String encode(long value) {
+        if (value == 0) return "0";
+
+        StringBuilder sb = new StringBuilder();
+        while (value > 0) {
+            sb.append(BASE36.charAt((int)(value % 36)));
+            value /= 36;
+        }
+        return sb.reverse().toString();
+    }
+
+    public static long decode(String value) {
+        long result = 0;
+        for (char c : value.toCharArray()) {
+            result = result * 36 + BASE36.indexOf(c);
+        }
+        return result;
+    }
+}
+```
+
+**특징:**
+- **문자 집합:** 36개 (대소문자 구분 없음)
+- **단순성:** 구현이 가장 간단
+- **길이 효율성:** ID 1,000,000 → "6bny" (4자리)
+- **장점:** 단순한 구현, 가독성 좋음
+- **단점:** Base62보다 긴 문자열 생성
+
+#### Base32 인코딩 (안전성 중시)
+```java
+// Base32: A-Z, 2-7 (총 32개 문자)
+public class Base32Encoder {
+    private static final String BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+    public static String encode(long value) {
+        if (value == 0) return "A";
+
+        StringBuilder sb = new StringBuilder();
+        while (value > 0) {
+            sb.append(BASE32.charAt((int)(value % 32)));
+            value /= 32;
+        }
+        return sb.reverse().toString();
+    }
+
+    public static long decode(String value) {
+        long result = 0;
+        for (char c : value.toCharArray()) {
+            result = result * 32 + BASE32.indexOf(c);
+        }
+        return result;
+    }
+}
+```
+
+**특징:**
+- **문자 집합:** 32개 (대문자 + 숫자)
+- **안전성:** 특수문자 완전 배제
+- **길이 효율성:** ID 1,000,000 → "7N5U" (4자리)
+- **장점:** 가장 안전한 문자 집합
+- **단점:** 가장 긴 문자열 생성
+
+### 11.3 인코딩 방식 선택 기준
+
+| 방식 | 문자 수 | URL 안전성 | 구현 난이도 | 길이 효율성 | 사용 사례 |
+|------|---------|------------|-------------|-------------|-----------|
+| **Base62** | 62 | 완전 안전 | 높음 | 최상 | bit.ly, t.co |
+| **Base64** | 64 | 조건부 안전 | 중간 | 상 | API 토큰, 세션 ID |
+| **Base36** | 36 | 안전 | 낮음 | 중 | Git 해시, 단순 서비스 |
+| **Base32** | 32 | 완전 안전 | 낮음 | 하 | 보안 토큰, OTP |
+
+#### 선택 기준:
+1. **URL 직접 사용 시:** Base62 또는 Base64 URL-safe 버전
+2. **단순 구현 시:** Base36
+3. **보안 최우선 시:** Base32
+4. **표준 준수 시:** Base64
+
+### 11.4 실제 서비스 구현 사례
+
+#### bit.ly 스타일 URL 단축기
+```java
+public class URLShortener {
+    private final Map<String, String> urlMap = new ConcurrentHashMap<>();
+    private final Map<String, String> reverseMap = new ConcurrentHashMap<>();
+    private final AtomicLong counter = new AtomicLong(1000); // 1000부터 시작
+
+    // URL 단축
+    public String shortenURL(String longURL) {
+        // 이미 단축된 URL인지 확인
+        String existing = reverseMap.get(longURL);
+        if (existing != null) {
+            return existing;
+        }
+
+        // 새로운 ID 생성 및 Base62 인코딩
+        long id = counter.incrementAndGet();
+        String shortKey = Base62Encoder.encode(id);
+
+        // 매핑 저장
+        urlMap.put(shortKey, longURL);
+        reverseMap.put(longURL, shortKey);
+
+        return shortKey;
+    }
+
+    // URL 복원
+    public String expandURL(String shortKey) {
+        return urlMap.get(shortKey);
+    }
+
+    // 통계 정보
+    public Map<String, Object> getStats() {
+        return Map.of(
+            "totalURLs", urlMap.size(),
+            "nextID", counter.get(),
+            "collisionRate", 0.0 // 실제로는 충돌 감지 로직 필요
+        );
+    }
+}
+```
+
+#### 고성능 분산 구현
+```java
+public class DistributedURLShortener {
+    private final RedisTemplate<String, String> redisTemplate;
+    private final AtomicLong counter = new AtomicLong();
+
+    public DistributedURLShortener(RedisTemplate<String, String> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+        // Redis에서 마지막 ID 복원
+        String lastId = redisTemplate.opsForValue().get("last_url_id");
+        if (lastId != null) {
+            counter.set(Long.parseLong(lastId));
+        }
+    }
+
+    public String shortenURL(String longURL) {
+        // 캐시에서 기존 단축 URL 확인
+        String cached = redisTemplate.opsForValue().get("reverse:" + longURL);
+        if (cached != null) {
+            return cached;
+        }
+
+        // 분산 환경에서 고유 ID 생성 (실제로는 Snowflake ID 등 사용)
+        long id = counter.incrementAndGet();
+
+        // Base62 인코딩
+        String shortKey = Base62Encoder.encode(id);
+
+        // Redis에 저장 (TTL 설정으로 임시 저장소 역할)
+        redisTemplate.opsForValue().set("url:" + shortKey, longURL, Duration.ofDays(365));
+        redisTemplate.opsForValue().set("reverse:" + longURL, shortKey, Duration.ofDays(365));
+        redisTemplate.opsForValue().set("last_url_id", String.valueOf(id));
+
+        return shortKey;
+    }
+
+    public String expandURL(String shortKey) {
+        // Redis에서 URL 조회 (캐시 미스 시 DB 조회)
+        String url = redisTemplate.opsForValue().get("url:" + shortKey);
+        if (url == null) {
+            // DB에서 조회하는 로직 추가 가능
+            throw new RuntimeException("URL not found: " + shortKey);
+        }
+        return url;
+    }
+}
+```
+
+### 11.5 성능 및 확장성 고려사항
+
+#### 데이터베이스 설계
+```sql
+-- URL 매핑 테이블
+CREATE TABLE url_mappings (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    short_key VARCHAR(10) UNIQUE NOT NULL,
+    original_url TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    access_count BIGINT DEFAULT 0,
+    INDEX idx_short_key (short_key),
+    INDEX idx_created_at (created_at)
+);
+
+-- 분산 ID 생성을 위한 시퀀스
+CREATE TABLE url_sequences (
+    stub CHAR(1) PRIMARY KEY DEFAULT 'a',
+    next_id BIGINT DEFAULT 1000
+);
+```
+
+#### 캐시 전략
+- **Write-through:** DB 저장 후 캐시 업데이트
+- **Cache-aside:** 캐시 미스 시 DB 조회 후 캐시 저장
+- **TTL 설정:** 임시 URL의 자동 만료
+
+#### 확장성 패턴
+1. **Database Sharding:** ID 범위별 샤딩
+2. **Read Replicas:** 읽기 부하 분산
+3. **CDN:** 정적 에셋 캐싱
+4. **Rate Limiting:** DDoS 방지
+
+---
+
+---
+
+## 12. 결론과 핵심 교훈
+
+*"URL 단축은 단순한 문제처럼 보이지만, 수십억 건의 데이터를 다루는 대규모 시스템 설계의 정수다."*
+
+> 인코딩 방식 선택은 성능, 안전성, 구현 복잡성 사이의 트레이드오프다. Base62가 가장 일반적이지만, 상황에 따라 Base64나 Base36이 더 적합할 수 있다.
 
 ---
 
