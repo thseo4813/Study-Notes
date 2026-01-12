@@ -1,13 +1,36 @@
-# 컴퓨터의 메모리 구조: 스택(Stack)과 힙(Heap)
+# 📚 메모리 구조: 왜 내 코드가 느리고 메모리가 부족할까?
 
-## 1. 핵심 요약 (Executive Summary)
+## 💻 실제로 겪어본 메모리 문제들
 
-프로그램이 실행될 때 운영체제(OS)로부터 메모리 공간을 할당받는데, 이 공간은 크게 **정적 영역(Static)**과 **동적 영역(Dynamic)**으로 나뉜다. 그중 데이터가 저장되는 핵심 구역이 바로 **스택(Stack)**과 **힙(Heap)**이다.
+### 개발자들이 흔히 마주치는 고민:
+
+**"왜 메모리가 부족하지? 16GB RAM인데?"**
+- 간단한 프로그램인데 OutOfMemoryError
+- 서버가 갑자기 죽으면서 메모리 누수 의심
+- GC가 너무 자주 일어나서 성능 저하
+
+**"왜 루프에서 객체 생성이 성능을 죽이나?"**
+- for문 안에서 String concatenation 할 때마다 느려짐
+- 게임에서 매 프레임 객체 생성으로 GC 멈춤
+- Android 앱에서 메모리 부족으로 크래시
+
+**"Stack Overflow는 왜 발생하지?"**
+- 재귀 함수에서 갑자기 StackOverflowError
+- 스택 크기가 왜 1MB밖에 안 되지?
+- 무한 재귀를 어떻게 방지하지?
+
+## 🎯 1분 요약: 메모리 구조의 핵심
+
+**메모리 = 임시 작업대(Stack) + 자유 창고(Heap)**
+
+- **Stack**: 함수 호출을 위한 빠른 임시 공간 (자동 정리)
+- **Heap**: 객체 저장을 위한 유연한 공간 (수동/GC 정리)
+- **문제**: Heap 관리를 잘못하면 메모리 누수, Stack을 잘못쓰면 오버플로우
 
 > **결론:**
-> * **Stack:** "함수 실행을 위한 임시 작업대". 매우 빠르고, 엄격하며, 자동으로 정리된다. (지역변수, 매개변수)
-> * **Heap:** "데이터를 위한 자유 저장소". 크고 유연하지만, 관리가 필요하고 상대적으로 느리다. (객체, 인스턴스)
-> * **Rule:** 성능 민감한 루프 안에서는 불필요한 Heap 할당(객체 생성)을 최소화하고 Stack을 활용하는 것이 업계 표준 최적화 기법이다.
+> 1. **성능-critical**: Stack 사용, 객체 최소화
+> 2. **데이터 저장**: Heap 사용, GC 고려
+> 3. **디버깅**: 메모리 누수 분석 도구 활용
 > 
 > 
 
@@ -15,18 +38,53 @@
 
 ## 2. 구조 및 특징 비교 (Comparison)
 
-| 구분 | 스택 (Stack) | 힙 (Heap) |
-| --- | --- | --- |
-| **구조** | **LIFO** (Last In, First Out) <br>
+**💡 실제 사용 예시:**
 
-<br> 책을 쌓아 올린 형태 | **랜덤 접근** (Random Access) <br>
+| 상황 | Stack 사용 | Heap 사용 |
+|------|------------|----------|
+| **빠른 계산** | `int sum = a + b;` | `BigInteger bigNum = new BigInteger("123456789");` |
+| **임시 데이터** | `String name = "홍길동";` | `List<User> users = new ArrayList<>();` |
+| **함수 호출** | `calculateScore(score);` | `User user = new User("홍길동", 25);` |
 
-<br> 넓은 창고에 물건을 흩뿌려 둔 형태 |
-| **속도** | **매우 빠름** (CPU가 직접 관리, 포인터만 이동) | **상대적으로 느림** (빈 공간을 찾고, 할당하고, 정리하는 오버헤드 존재) |
-| **관리 주체** | **OS / 컴파일러** (함수가 끝나면 자동 소멸) | **개발자 / 가비지 컬렉터(GC)** (수동 해제하거나 GC가 돌 때까지 남음) |
-| **크기** | 작고 제한적 (보통 수 MB 단위) | 시스템 메모리(RAM)가 허용하는 만큼 큼 |
-| **저장 데이터** | 지역 변수, 매개변수, 리턴 주소 (원시 타입) | `new`로 생성된 객체, 인스턴스, 배열 (참조 타입) |
-| **주요 에러** | `Stack Overflow` (재귀 깊이 초과) | `Out of Memory` (메모리 누수) |
+**🚨 실제 문제 사례:**
+
+**문제 1: String concatenation 메모리 누수**
+```java
+// ❌ 나쁜 예: 루프에서 String 더하기
+String result = "";
+for (int i = 0; i < 100000; i++) {
+    result += "item" + i;  // 매번 새 String 객체 생성!
+}
+// 결과: 100,000개 String 객체 생성, OutOfMemory
+```
+
+```java
+// ✅ 좋은 예: StringBuilder 사용
+StringBuilder sb = new StringBuilder();
+for (int i = 0; i < 100000; i++) {
+    sb.append("item").append(i);
+}
+String result = sb.toString();
+// 결과: 1개 객체만 생성
+```
+
+**문제 2: 재귀 호출 Stack Overflow**
+```java
+// ❌ 위험한 재귀: Stack Overflow 발생 가능
+public int factorial(int n) {
+    return n * factorial(n - 1);  // 스택 프레임 계속 쌓임
+}
+factorial(10000);  // StackOverflowError!
+```
+
+**문제 3: Heap 메모리 누수**
+```java
+// ❌ 메모리 누수: HashMap에 객체 계속 추가
+Map<String, byte[]> cache = new HashMap<>();
+while (true) {
+    cache.put("key" + count++, new byte[1024 * 1024]);  // 1MB씩 누수
+}
+```
 
 ---
 
