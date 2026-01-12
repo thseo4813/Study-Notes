@@ -195,6 +195,258 @@ OS 스레드는 생성 비용이 비싸고 개수 제한이 있다. (Context Swi
 
 ---
 
+## 8. 실무 문제 해결 사례
+
+### 8.1 웹 서버의 C10K 문제 해결 (Apache vs Nginx)
+
+**문제 상황:**
+- 1990년대 Apache 웹 서버의 스레드 모델 한계
+- 연결 10,000개(C10K)만 되어도 서버가 다운됨
+- 각 HTTP 요청마다 스레드 1개 할당 방식의 비효율성
+
+**기존 Apache 방식의 문제:**
+```c
+// Apache의 스레드 기반 모델 (개념적)
+void handle_request(int client_socket) {
+    // 1. 스레드 생성 (오버헤드 큼)
+    pthread_create(&thread, NULL, process_request, &client_socket);
+
+    // 각 요청마다 1MB 스택 메모리 + 커널 리소스 소비
+    // 10,000개 연결 = 10GB 메모리 + 문맥 교환 오버헤드
+}
+```
+
+**Nginx의 프로세스 모델 해결:**
+```c
+// Nginx의 이벤트 기반 + 프로세스 모델
+int main() {
+    // 1. 마스터 프로세스 생성
+    pid_t master_pid = fork_master_process();
+
+    // 2. 워커 프로세스들 생성 (CPU 코어 수만큼)
+    for (int i = 0; i < num_cores; i++) {
+        pid_t worker_pid = fork_worker_process();
+
+        // 각 워커는 이벤트 루프로 수만 개 연결 처리
+        event_loop();  // epoll/kqueue 기반
+    }
+}
+```
+
+**아키텍처 비교:**
+
+| 측면 | Apache (스레드) | Nginx (프로세스+이벤트) |
+| --- | --- | --- |
+| **메모리 사용** | 10,000 연결 × 1MB = 10GB | 워커당 공유 메모리 |
+| **문맥 교환** | 잦은 스레드 전환 | 최소한의 프로세스 전환 |
+| **확장성** | C10K 한계 | C10M 가능 |
+| **안정성** | 메모리 누수로 불안정 | 프로세스 격리로 안정적 |
+
+**결과:**
+- **성능:** 10배 이상 처리량 증가
+- **안정성:** 프로세스 크래시가 전체 영향 미치지 않음
+- **효율성:** CPU 사용률 90% → 30% 감소
+
+### 8.2 Node.js의 싱글 스레드 이벤트 루프
+
+**문제 상황:**
+- Java의 멀티스레드 모델로는 복잡한 동시성 처리 어려움
+- 콜백 지옥(Callback Hell)과 경쟁 상태 문제
+- 메모리 사용량 증가와 GC 부하
+
+**Node.js의 혁신적 접근:**
+```javascript
+// 이벤트 루프 기반 동시성
+const http = require('http');
+
+const server = http.createServer((req, res) => {
+    // 1. I/O 작업은 논블로킹으로 위임
+    fs.readFile('/path/to/file', (err, data) => {
+        // 3. I/O 완료 시점에 콜백 실행
+        res.end(data);
+    });
+
+    // 2. 메인 스레드는 즉시 다음 요청 처리 가능
+});
+
+// 단일 스레드로 수만 개 연결 처리
+server.listen(3000);
+```
+
+**이벤트 루프 작동 원리:**
+```
+└── 이벤트 루프
+    ├── 타이머 큐 (setTimeout, setInterval)
+    ├── I/O 콜백 큐 (파일, 네트워크)
+    ├── 체크 큐 (setImmediate)
+    ├── close 콜백 큐
+    └── nextTick 큐 (프로세스.nextTick)
+```
+
+**성능 메트릭:**
+- **처리량:** 초당 10,000+ 요청
+- **메모리:** 스레드당 10MB vs Node.js 30MB
+- **응답성:** 50ms vs 5ms (I/O 대기 시간 절약)
+
+### 8.3 데이터베이스의 연결 풀 구현
+
+**문제 상황:**
+- 웹 애플리케이션에서 DB 연결 생성/삭제 오버헤드
+- 동시 요청 시 연결 부족으로 인한 성능 저하
+- 연결 누수로 인한 리소스 고갈
+
+**HikariCP의 프로세스 모델:**
+```java
+// HikariCP 연결 풀 설정
+HikariConfig config = new HikariConfig();
+config.setJdbcUrl("jdbc:mysql://localhost:3306/mydb");
+config.setUsername("user");
+config.setPassword("password");
+
+// 최적화된 설정
+config.setMaximumPoolSize(10);           // 최대 연결 수
+config.setMinimumIdle(5);                // 최소 유휴 연결
+config.setConnectionTimeout(30000);      // 연결 대기 시간
+config.setIdleTimeout(600000);           // 유휴 연결 제거 시간
+config.setMaxLifetime(1800000);          // 연결 최대 수명
+
+HikariDataSource ds = new HikariDataSource(config);
+```
+
+**연결 풀 메커니즘:**
+1. **초기화:** 최소 개수만큼 연결 미리 생성
+2. **대여:** 요청 시 유휴 연결 즉시 제공
+3. **반환:** 사용 후 연결을 풀에 반환
+4. **관리:** 유휴 연결 정리, 죽은 연결 제거
+
+**성능 향상:**
+- **연결 시간:** 50ms → 1ms
+- **처리량:** 100 req/s → 1000 req/s
+- **안정성:** 연결 누수 방지, 자동 복구
+
+### 8.4 실시간 채팅 시스템의 스레드 모델
+
+**문제 상황:**
+- 수만 명 동시 접속 채팅 서비스
+- 메시지 브로드캐스트의 효율성
+- 메모리 사용량과 CPU 부하
+
+**기존 스레드 모델의 문제:**
+```java
+// 각 클라이언트마다 스레드 할당 (비효율적)
+class ChatServer {
+    private List<ClientHandler> clients = new ArrayList<>();
+
+    public void broadcast(String message) {
+        for (ClientHandler client : clients) {
+            // 각 클라이언트마다 스레드 생성
+            new Thread(() -> client.send(message)).start();
+        }
+    }
+}
+```
+
+**이벤트 드리븐 모델로 개선:**
+```java
+// Netty 기반 이벤트 루프
+public class ChatServer {
+    private EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+    private EventLoopGroup workerGroup = new NioEventLoopGroup();
+
+    public void start() {
+        ServerBootstrap b = new ServerBootstrap();
+        b.group(bossGroup, workerGroup)
+         .channel(NioServerSocketChannel.class)
+         .childHandler(new ChannelInitializer<SocketChannel>() {
+             @Override
+             protected void initChannel(SocketChannel ch) {
+                 ch.pipeline().addLast(new ChatHandler());
+             }
+         });
+
+        ChannelFuture f = b.bind(8080).sync();
+        f.channel().closeFuture().sync();
+    }
+}
+
+class ChatHandler extends SimpleChannelInboundHandler<String> {
+    private static final ChannelGroup channels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+
+    @Override
+    public void handlerAdded(ChannelHandlerContext ctx) {
+        channels.add(ctx.channel());
+    }
+
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, String msg) {
+        // 이벤트 루프에서 모든 클라이언트로 브로드캐스트
+        channels.writeAndFlush(msg + '\n');
+    }
+}
+```
+
+**아키텍처 비교:**
+
+| 측면 | 스레드 모델 | 이벤트 드리븐 |
+| --- | --- | --- |
+| **동시 접속** | 1,000개 | 100,000개 |
+| **메모리** | 1GB (1K 스레드) | 100MB |
+| **CPU** | 문맥 교환 부하 | 이벤트 처리 효율 |
+| **코드 복잡도** | 낮음 | 높음 |
+
+### 8.5 게임 서버의 프로세스 아키텍처
+
+**문제 상황:**
+- MMORPG의 수십만 동시 접속
+- 게임 로직의 실시간 처리 요구사항
+- 서버 장애 시 최소 영향 범위
+
+**게임 서버 아키텍처:**
+```cpp
+// 분산된 프로세스 아키텍처
+class GameServer {
+public:
+    void initialize() {
+        // 1. 로그인 서버 (프로세스 격리)
+        loginProcess = fork_login_server();
+
+        // 2. 게임 월드 서버들 (여러 개)
+        for (int i = 0; i < num_worlds; i++) {
+            worldProcesses[i] = fork_world_server(i);
+        }
+
+        // 3. 채팅 서버
+        chatProcess = fork_chat_server();
+
+        // 4. 데이터베이스 서버
+        dbProcess = fork_database_server();
+    }
+
+    void handle_crash(pid_t crashed_pid) {
+        // 프로세스 크래시 감지 및 복구
+        if (crashed_pid == loginProcess) {
+            restart_login_server();
+        } else {
+            // 다른 서버들은 영향을 받지 않음
+            restart_world_server(crashed_pid);
+        }
+    }
+};
+```
+
+**프로세스 분리 전략:**
+- **로그인 서버:** 인증 로직만 담당
+- **월드 서버:** 게임 로직 분산 처리
+- **채팅 서버:** 메시징 전용
+- **DB 서버:** 데이터 영속화
+
+**장점:**
+- **격리성:** 한 서버 장애가 전체 영향 미치지 않음
+- **확장성:** 월드별로 독립적 스케일링 가능
+- **유지보수:** 각 컴포넌트별 독립적 배포
+
+---
+
 ### Next Step
 
 동시성 문제를 다루다 보면 자연스럽게 **"그럼 I/O 작업(DB 조회, 네트워크)을 기다릴 때 스레드는 뭐 하나?"**라는 의문이 생깁니다.
