@@ -1,13 +1,36 @@
-# 초고속 데이터 접근: 캐싱 전략(Caching Strategies)과 Redis 패턴
+# ⚡ 캐시로 데이터베이스 성능 100배 향상시키기
 
-## 1. 핵심 요약 (Executive Summary)
+## 💾 실제 캐시 문제와 해결 사례들
 
-데이터베이스(Disk)는 메모리(RAM)보다 수십만 배 느리다. 파레토 법칙에 따라 **자주 조회되는 20%의 데이터(Hot Data)**를 빠른 메모리(Cache)에 저장해 두면 전체 시스템 성능을 비약적으로 높일 수 있다.
+### 데이터베이스 성능 개선 시 흔히 하는 고민:
+
+**"데이터베이스 쿼리가 너무 느려!"**
+- 사용자 조회가 2-3초 걸림
+- 피크타임에 DB CPU 100% 사용
+- 캐시를 썼는데도 성능이 안 오름
+
+**"캐시가 데이터와 안 맞아!"**
+- 캐시는 최신 데이터인데 DB는 오래된 데이터
+- 캐시 만료로 갑자기 모든 요청이 DB로 몰림
+- 캐시 서버 다운으로 전체 서비스 마비
+
+**"어떤 데이터를 캐시할까?"**
+- 모든 데이터를 캐시하기엔 메모리가 부족
+- 어떤 쿼리가 Hot한지 모름
+- 캐시 히트율이 낮아서 효과가 없음
+
+## 🎯 1분 요약: 캐싱의 핵심
+
+**캐시 = 느린 디스크 대신 빠른 메모리 사용**
+
+- **문제**: DB 조회는 10-100ms, 메모리는 1ms
+- **해결**: 자주 쓰는 데이터를 메모리에 저장
+- **주의**: 캐시는 휘발성, TTL 필수, 일관성 관리 필요
 
 > **결론:**
-> 1. **읽기 전략:** 기본적으로 **Look-aside (Lazy Loading)** 패턴을 사용한다.
-> 2. **쓰기 전략:** 데이터 정합성이 중요하면 **Write-through**, 쓰기 성능이 중요하면 **Write-back**을 고려한다.
-> 3. **주의:** 캐시는 영구 저장소가 아니므로 언제든 날아갈 수 있음을 전제해야 하며, **만료 시간(TTL)** 설정이 필수다.
+> 1. **읽기 최적화**: Look-aside 패턴으로 캐시 먼저 조회
+> 2. **일관성 유지**: Write-through로 데이터 동기화
+> 3. **실패 대비**: 캐시 미스 시 DB 폴백, TTL 설정
 > 
 > 
 
@@ -15,17 +38,106 @@
 
 ## 2. 주요 캐싱 전략 (Patterns)
 
-### 2.1 Look-aside (Lazy Loading)
+### 2.1 실제 캐시 적용 사례
 
-**가장 범용적이고 표준적인 방식.** 대부분의 웹 서비스는 이 방식을 기본으로 채택한다.
+**💡 서비스별 캐시 적용 패턴:**
 
-* **동작:** 앱이 데이터를 찾을 때 **캐시를 먼저 본다.**
-* **Hit:** 캐시에 있으면 바로 반환 (DB 부하 0).
-* **Miss:** 없으면 **DB에서 조회**한 뒤, 캐시에 저장하고 반환.
+| 서비스 | 캐시 대상 | TTL | 전략 |
+|--------|-----------|-----|------|
+| **소셜 미디어** | 사용자 프로필, 타임라인 | 5분 | Look-aside |
+| **이커머스** | 상품 정보, 재고 | 1분 | Write-through |
+| **게임** | 플레이어 상태, 랭킹 | 30초 | Write-back |
 
+**🚨 실제 문제 사례:**
 
-* **장점:** 캐시가 죽어도 DB에서 조회하면 되므로 서비스 전체 장애로 번지지 않음. (Resilience)
-* **단점:** 캐시 미스(Miss)가 발생하면 DB 조회를 거치므로 초기 응답이 느림(Cache Warming 필요).
+**문제 1: 캐시 스탬피드 (Thundering Herd)**
+```java
+// ❌ 잘못된 캐시 만료 처리
+@PostMapping("/user/{id}")
+public User getUser(@PathVariable Long id) {
+    String cacheKey = "user:" + id;
+
+    // 캐시 만료 동시에 1000명의 요청이 몰림
+    User user = redisTemplate.opsForValue().get(cacheKey);
+    if (user == null) {
+        user = userService.getUserFromDB(id);  // DB에 1000번 쿼리!
+        redisTemplate.opsForValue().set(cacheKey, user, 5, TimeUnit.MINUTES);
+    }
+    return user;
+}
+```
+
+```java
+// ✅ 분산 락으로 해결
+@PostMapping("/user/{id}")
+public User getUser(@PathVariable Long id) {
+    String cacheKey = "user:" + id;
+    String lockKey = "lock:" + id;
+
+    User user = redisTemplate.opsForValue().get(cacheKey);
+    if (user == null) {
+        // 분산 락으로 DB 조회는 한 번만
+        Boolean locked = redisTemplate.opsForValue().setIfAbsent(lockKey, "1",
+            10, TimeUnit.SECONDS);
+        if (locked) {
+            try {
+                user = userService.getUserFromDB(id);
+                redisTemplate.opsForValue().set(cacheKey, user, 5, TimeUnit.MINUTES);
+            } finally {
+                redisTemplate.delete(lockKey);
+            }
+        } else {
+            // 다른 스레드가 조회 중이니 잠시 대기
+            Thread.sleep(100);
+            return getUser(id); // 재귀 호출로 재시도
+        }
+    }
+    return user;
+}
+```
+
+**문제 2: 캐시 일관성 깨짐**
+```java
+// ❌ 데이터 변경 시 캐시 무효화 누락
+@PutMapping("/user/{id}")
+public void updateUser(@PathVariable Long id, User updatedUser) {
+    userService.updateUserInDB(id, updatedUser);
+    // 캐시는 그대로 두면? 오래된 데이터 계속 반환!
+}
+```
+
+```java
+// ✅ 캐시 무효화 추가
+@PutMapping("/user/{id}")
+public void updateUser(@PathVariable Long id, User updatedUser) {
+    userService.updateUserInDB(id, updatedUser);
+    redisTemplate.delete("user:" + id);  // 캐시 무효화
+}
+```
+
+**문제 3: 캐시 서버 다운으로 인한 장애**
+```java
+// ❌ 캐시 연결 실패 시 서비스 다운
+public User getUser(Long id) {
+    try {
+        return redisTemplate.opsForValue().get("user:" + id);
+    } catch (Exception e) {
+        throw new RuntimeException("Cache failure!");  // 서비스 다운!
+    }
+}
+```
+
+```java
+// ✅ Circuit Breaker 패턴 적용
+public User getUser(Long id) {
+    try {
+        return redisTemplate.opsForValue().get("user:" + id);
+    } catch (Exception e) {
+        // 캐시 실패해도 DB에서 조회 (Graceful Degradation)
+        return userService.getUserFromDB(id);
+    }
+}
+```
 
 ```mermaid
 sequenceDiagram

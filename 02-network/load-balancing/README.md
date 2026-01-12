@@ -1,13 +1,36 @@
-# 웹의 교통 경찰: 로드 밸런싱(Load Balancing)과 Nginx
+# ⚖️ 로드 밸런싱: 트래픽을 어떻게 분배할까?
 
-## 1. 핵심 요약 (Executive Summary)
+## 🚨 실제로 겪어본 로드밸런싱 문제들
 
-서비스가 커지면 서버 한 대(Single Instance)로는 트래픽을 감당할 수 없다. 여러 대의 서버를 두고 트래픽을 분산시켜야 하는데, 이 역할을 하는 것이 **로드 밸런서(Load Balancer)**다. 실무에서는 **Nginx**를 사용하여 **리버스 프록시(Reverse Proxy)** 형태로 구현하는 것이 표준이다.
+### 서비스 확장 시 흔히 마주치는 고민:
+
+**"서버 한 대로는 트래픽을 못 감당해!"**
+- 동시에 1000명 이상 접속 시 서버가 죽음
+- 이벤트 기간에 트래픽 폭증으로 서비스 다운
+- 데이터베이스 연결이 한계에 도달
+
+**"로드 밸런서 설정이 잘못됐어"**
+- 특정 서버에만 트래픽 몰림 (Sticky session 문제)
+- 헬스체크 실패로 서버가 죽었는데도 요청 감
+- SSL 터미네이션 설정으로 성능 저하
+
+**"어떤 로드 밸런싱 알고리즘이 좋을까?"**
+- Round Robin vs Least Connections vs IP Hash
+- 세션 유지(Session Affinity) 때문에 골치
+- 캐시 무효화 시 모든 서버에 적용하기 어려움
+
+## 🎯 1분 요약: 로드 밸런싱의 핵심
+
+**로드 밸런서 = 스마트한 트래픽 분배기**
+
+- **역할**: 들어오는 요청을 여러 서버로 골고루 분배
+- **종류**: L4 (IP/포트 기반) vs L7 (콘텐츠 기반)
+- **도구**: Nginx, HAProxy, AWS ALB/ELB
 
 > **결론:**
-> 1. **확장성(Scalability):** 서버를 수평으로 계속 늘릴 수 있다(Scale-out).
-> 2. **고가용성(High Availability):** 서버 하나가 터져도 로드 밸런서가 알아서 살아있는 다른 서버로 요청을 보낸다. (무중단 서비스)
-> 3. **보안:** 실제 서버의 IP를 숨기고, 앞단에서 공격(DDoS 등)을 막아낸다.
+> 1. **확장성**: 서버 대수만큼 용량 증가
+> 2. **가용성**: 서버 하나 죽어도 서비스 유지
+> 3. **성능**: 캐싱, 압축으로 응답 속도 개선
 > 
 > 
 
@@ -32,14 +55,54 @@
 
 OSI 7계층 중 어디서 데이터를 나누느냐에 따라 성능과 기능이 달라진다.
 
-### 3.1 비교표
+### 3.1 실제 적용 예시
 
-| 구분 | L4 로드 밸런서 (Transport Layer) | L7 로드 밸런서 (Application Layer) |
-| --- | --- | --- |
-| **기준** | **IP 주소 + 포트 번호** (단순 패킷 레벨) | **URL, HTTP 헤더, 쿠키** (콘텐츠 레벨) |
-| **특징** | 패킷 내용을 안 보고 토스만 함. **빠르고 단순함.** | 내용을 뜯어보고 판단함. **똑똑하지만 부하가 있음.** |
-| **기능** | 단순 부하 분산 | `/img`는 이미지 서버로, `/api`는 API 서버로 분기 가능. |
-| **대표 도구** | AWS Network Load Balancer (NLB) | AWS Application Load Balancer (ALB), Nginx |
+**💡 선택 기준:**
+
+| 상황 | L4 선택 | L7 선택 |
+|------|---------|---------|
+| **단순 부하 분산** | 게임 서버 (TCP/UDP) | 웹 애플리케이션 (HTTP) |
+| **높은 성능 요구** | 비디오 스트리밍 | API 게이트웨이 |
+| **콘텐츠 기반 라우팅** | X | 마이크로서비스 |
+
+**🚨 실제 문제 사례:**
+
+**문제 1: 세션 유지가 안 되는 Sticky Session 문제**
+```nginx
+# ❌ 잘못된 설정: 모든 요청이 다른 서버로 감
+upstream backend {
+    server app1.example.com;
+    server app2.example.com;
+    server app3.example.com;
+}
+
+# ✅ 해결: IP 해시로 같은 사용자 같은 서버로
+upstream backend {
+    ip_hash;  # 같은 IP는 같은 서버로
+    server app1.example.com;
+    server app2.example.com;
+    server app3.example.com;
+}
+```
+
+**문제 2: 헬스체크 실패로 인한 다운타임**
+```nginx
+# ❌ 헬스체크 없음: 죽은 서버에도 요청 감
+upstream backend {
+    server app1.example.com;
+    server app2.example.com down;  # 수동으로만 설정
+}
+
+# ✅ 자동 헬스체크
+upstream backend {
+    server app1.example.com;
+    server app2.example.com;
+    server app3.example.com;
+
+    # 5초마다 /health 엔드포인트 체크
+    health_check interval=5s uri=/health;
+}
+```
 
 ---
 

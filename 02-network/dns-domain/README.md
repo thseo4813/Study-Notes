@@ -1,10 +1,36 @@
-# 인터넷의 전화번호부: DNS와 도메인 작동 원리
+# 🌐 DNS: 도메인이 작동하지 않을 때 해결하는 방법
 
-## 1. 핵심 요약 (Executive Summary)
+## 🆘 실제로 겪어본 DNS 문제들
 
-컴퓨터는 `google.com` 같은 문자열을 이해하지 못하며, 오직 `142.250.217.78` 같은 IP 주소만으로 통신한다. **DNS**는 인간이 읽을 수 있는 도메인 이름을 컴퓨터가 이해하는 IP 주소로 변환(**Resolving**)해 주는 거대한 분산 데이터베이스 시스템이다.
+### 개발자들이 흔히 마주치는 악몽:
 
-> **결론:** DNS는 단순한 1:1 매핑 테이블이 아니라, **계층적(Hierarchical)이고 분산된(Distributed)** 구조다. 따라서 도메인 변경 시 전 세계에 전파되는 데 시간(TTL)이 걸리며, 캐싱 전략이 성능에 지대한 영향을 미친다.
+**"왜 내 사이트가 접속이 안 되지?"**
+- 로컬에서는 잘 되는데 서버에서는 DNS 오류
+- 도메인 변경했는데 24시간 지나도 반영 안 됨
+- CDN 설정했는데 DNS propagation이 느림
+
+**"DNS가 왜 이렇게 느리지?"**
+- 첫 접속은 느린데 두 번째는 빠름 (캐싱 때문)
+- 글로벌 사용자 접속이 지역별로 차이남
+- DNS 쿼리가 타임아웃 남
+
+**"보안 문제 때문에 DNS가 막혔어"**
+- 기업 방화벽이 외부 DNS를 막음
+- DNS spoofing 공격으로 피싱 사이트로 리다이렉션
+- DDoS 공격으로 DNS 서버가 다운
+
+## 🎯 1분 요약: DNS의 핵심
+
+**DNS = 도메인 ↔ IP 변환 시스템**
+
+- **역할**: `google.com` → `142.250.217.78`
+- **구조**: 계층적 분산 데이터베이스 (Root → TLD → Authoritative)
+- **문제**: 캐싱 때문에 변경 반영이 느림, 보안 취약점 多
+
+> **결론:**
+> 1. **캐싱**: DNS 변경은 TTL만큼 시간이 걸림
+> 2. **분산**: 전 세계 DNS 서버가 협력
+> 3. **보안**: DNSSEC로 스푸핑 방지 필요
 
 ---
 
@@ -21,9 +47,43 @@ DNS는 `.`(Root)을 최상위로 하는 역트리(Inverted Tree) 구조를 가�
 
 ---
 
-## 3. 작동 원리: `google.com`을 찾아서
+## 3. 실제 DNS 작동: `google.com`을 찾아서
 
 사용자가 브라우저에 주소를 입력하면 다음과 같은 **재귀적 질의(Recursive Query)**가 발생한다.
+
+**🚨 실제 문제 사례:**
+
+**문제 1: DNS 캐싱으로 인한 변경 반영 지연**
+```bash
+# 도메인 IP 변경 후
+nslookup myapp.com
+# 결과: 아직 옛날 IP가 나옴 (TTL 3600초 = 1시간 대기)
+
+# 강제 캐시 비우기 (Windows)
+ipconfig /flushdns
+
+# 강제 캐시 비우기 (macOS)
+sudo killall -HUP mDNSResponder
+```
+
+**문제 2: DNS 전파 시간 문제 (Propagation)**
+```bash
+# 도메인 설정 변경 1분 후
+dig myapp.com @8.8.8.8    # 구글 DNS: 이미 반영됨
+dig myapp.com @1.1.1.1    # Cloudflare: 아직 옛날 IP
+dig myapp.com @168.126.63.1 # KT DNS: 2시간 후 반영
+# DNS 서버마다 전파 속도가 다름!
+```
+
+**문제 3: DNS 타임아웃으로 인한 서비스 장애**
+```bash
+# DNS 서버 응답 없음
+nslookup myapp.com
+;; connection timed out; no servers could be reached
+
+# 원인: DNS 서버 다운 or 네트워크 문제
+# 영향: 전체 서비스 접속 불가 (IP로 직접 접속은 가능)
+```
 
 ### 3.1 시퀀스 다이어그램 (The Flow)
 
