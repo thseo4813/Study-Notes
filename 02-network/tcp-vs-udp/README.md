@@ -94,23 +94,61 @@ TCP는 통신을 시작하기 전에 "너 내 말 들려? 응 잘 들려" 과정
 
 ### 3.1 연결 수립 과정 (Connection Establishment)
 
+TCP 연결 수립 시 각 단계에서의 상태(State) 변화를 함께 살펴보겠습니다.
+
 ```mermaid
 sequenceDiagram
     participant Client
     participant Server
 
-    Note over Client, Server: 1. 접속 요청 (SYN)
-    Client->>Server: "똑똑! 대화 가능해? (SYN)"
-    
-    Note over Client, Server: 2. 요청 수락 (SYN-ACK)
-    Server->>Client: "응 가능해. 너도 내 말 들려? (SYN + ACK)"
-    
-    Note over Client, Server: 3. 연결 확정 (ACK)
-    Client->>Server: "응 잘 들려! 이제 데이터 보낸다. (ACK)"
-    
-    Note over Client, Server: === 연결 성립 (Established) ===
+    Note over Client: 상태: CLOSED
+    Note over Server: 상태: LISTEN
+
+    rect rgb(240, 248, 255)
+        Note over Client, Server: 📡 1단계: SYN 전송
+        Client->>Server: SYN (seq=100)
+        Note over Client: 상태: SYN_SENT<br/>🔄 SYN 패킷 전송 후 대기
+        Note over Server: 상태: SYN_RCVD<br/>✅ SYN 수신, SYN+ACK 준비
+    end
+
+    rect rgb(240, 255, 240)
+        Note over Client, Server: 📡 2단계: SYN+ACK 응답
+        Server->>Client: SYN+ACK (seq=200, ack=101)
+        Note over Server: 상태: SYN_RCVD<br/>🔄 SYN+ACK 전송, ACK 대기
+        Note over Client: 상태: SYN_SENT<br/>✅ SYN+ACK 수신, ACK 전송 준비
+    end
+
+    rect rgb(255, 248, 240)
+        Note over Client, Server: 📡 3단계: ACK 확인
+        Client->>Server: ACK (ack=201)
+        Note over Client: 상태: ESTABLISHED<br/>✅ 연결 수립 완료
+        Note over Server: 상태: ESTABLISHED<br/>✅ 연결 수립 완료
+    end
+
+    Note over Client, Server: 🎯 연결 성립 (ESTABLISHED)
     Client->>Server: [데이터 전송 시작]
 
+```
+
+**🔄 TCP 상태 변화 요약:**
+
+| 단계 | 클라이언트 상태 | 서버 상태 | 설명 |
+|------|----------------|-----------|------|
+| 초기 | `CLOSED` | `LISTEN` | 서버가 연결 대기 중 |
+| SYN 전송 | `SYN_SENT` | `LISTEN` → `SYN_RCVD` | 클라이언트가 연결 요청 |
+| SYN+ACK | `SYN_SENT` | `SYN_RCVD` | 서버가 요청 수락 |
+| ACK 전송 | `ESTABLISHED` | `SYN_RCVD` → `ESTABLISHED` | 양방향 연결 완료 |
+
+**📊 실제 네트워크 패킷 캡처 예시:**
+```
+# SYN 패킷 (클라이언트 → 서버)
+TCP: Flags: 0x02 (SYN), Seq=100, Win=65535
+
+# SYN+ACK 패킷 (서버 → 클라이언트)
+TCP: Flags: 0x12 (SYN,ACK), Seq=200, Ack=101, Win=65535
+
+# ACK 패킷 (클라이언트 → 서버)
+TCP: Flags: 0x10 (ACK), Seq=101, Ack=201, Win=65535
 ```
 
 * **SYN (Synchronize Sequence Number):** 연결 요청 플래그.
