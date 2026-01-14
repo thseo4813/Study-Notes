@@ -288,65 +288,139 @@ Root CA (최상위)
 
 ### 5.1 Mixed Content 에러
 
+> [!CAUTION]
+> **증상:** HTTPS 사이트에서 일부 이미지/스크립트가 안 불러와짐
+
+#### 왜 발생하는가?
+
+```mermaid
+flowchart TB
+    subgraph HTTPS_PAGE["🔒 HTTPS 페이지 (암호화된 금고)"]
+        HTML["🔒 암호화된 HTML"]
+        CSS["🔒 암호화된 CSS"]
+        IMG["⚠️ HTTP 이미지<br/>(암호화 안 됨!)"]
+    end
+    
+    Browser["🌐 브라우저"]
+    
+    IMG --> Browser
+    Browser --> |"암호화 안 된 건 위험해!<br/>차단할게"| Block["🚫 차단"]
+    
+    style IMG fill:#ffcdd2
+    style Block fill:#ef5350,color:#fff
 ```
-[증상]
-HTTPS 사이트에서 일부 이미지/스크립트가 안 불러와짐
 
-[원리로 이해하기]
-HTTPS 페이지 안에서 HTTP 리소스를 불러오면:
-→ 암호화된 금고 안에 암호화 안 된 문서를 넣는 것
-→ 금고의 의미가 없어짐!
+> [!NOTE]
+> **원리:** 암호화된 금고 안에 암호화 안 된 문서를 넣으면, 금고의 의미가 없어집니다.
+> 브라우저는 보안을 위해 Mixed Content를 차단합니다.
 
-브라우저: "이거 보안 위험해서 차단할게"
+#### 해결 방법
+
+| 상태 | 코드 | 설명 |
+|:---:|------|------|
+| ❌ | `<img src="http://example.com/image.jpg">` | HTTP 리소스 → 차단됨 |
+| ✅ | `<img src="https://example.com/image.jpg">` | HTTPS로 명시 |
+| ✅✅ | `<img src="//example.com/image.jpg">` | 프로토콜 자동 선택 **(권장)** |
+
+<details>
+<summary>🔍 빠른 진단 방법</summary>
+
+**브라우저 개발자 도구 (F12)**
+- **Console 탭:** "Mixed Content" 경고 메시지 확인
+- **Network 탭:** 차단된 리소스 빨간색으로 표시
+
+```bash
+# 또는 curl로 확인
+curl -s https://yoursite.com | grep -i "http://"
 ```
 
-```html
-<!-- ❌ 문제: HTTPS 페이지에서 HTTP 리소스 -->
-<img src="http://example.com/image.jpg">
+</details>
 
-<!-- ✅ 해결: 모든 리소스를 HTTPS로 -->
-<img src="https://example.com/image.jpg">
-
-<!-- ✅ 더 좋은 해결: 프로토콜 자동 선택 -->
-<img src="//example.com/image.jpg">
-```
+---
 
 ### 5.2 인증서 만료 문제
 
-```
-[원리]
-인증서에는 유효기간이 있다 (보통 90일~1년)
-→ 정기적인 신원 재확인 + 키 갱신 강제
+> [!WARNING]
+> **증상:** 갑자기 "이 사이트는 안전하지 않습니다" 경고 발생
 
-[해결: 자동화]
-Let's Encrypt + Certbot으로 자동 갱신
-```
+#### 왜 유효기간이 있는가?
+
+> [!IMPORTANT]
+> 인증서 유효기간은 **보안을 위한 설계**입니다.
+
+| 이유 | 설명 |
+|-----|------|
+| 🔄 **정기적 신원 재확인** | 회사가 아직 존재하는지, 도메인 소유권이 유효한지 확인 |
+| 🔑 **키 갱신 강제** | 오래된 키는 유출 위험 증가, 새 키로 교체 기회 |
+
+| 인증서 종류 | 유효기간 |
+|-----------|---------|
+| Let's Encrypt (무료) | **90일** |
+| 유료 인증서 | **1년** |
+
+#### 해결: 자동 갱신 설정
 
 ```bash
-# 갱신 테스트
+# 1. 갱신 테스트 (실제 갱신 안 함)
 sudo certbot renew --dry-run
 
-# 실제 갱신 (크론잡으로 자동화)
+# 2. 실제 갱신
 sudo certbot renew && sudo systemctl reload nginx
 ```
 
+<details>
+<summary>🤖 완전 자동화 (크론잡 설정)</summary>
+
+```bash
+# /etc/cron.d/certbot-renew
+# 매일 새벽 3시에 갱신 체크 (만료 30일 전에만 실제 갱신)
+0 3 * * * root certbot renew --quiet && systemctl reload nginx
+```
+
+> [!TIP]
+> Certbot 설치 시 이메일을 등록하면, 만료 **20일, 10일, 1일** 전에 알림 메일을 받을 수 있습니다.
+
+</details>
+
+---
+
 ### 5.3 "안전하지 않음" 경고
 
+> [!CAUTION]
+> **증상:** 브라우저 주소창에 "안전하지 않음" 또는 🔓 빨간 자물쇠 표시
+
+#### 원인 진단 체크리스트
+
+| 분류 | 원인 | 확인 사항 |
+|-----|------|----------|
+| **1. 인증서** | 만료됨 | `openssl`로 만료일 확인 |
+| | 도메인 불일치 | `www.example.com` ≠ `example.com` |
+| | 자체 서명 | CA 검증 불가 |
+| | 체인 불완전 | 중간 인증서 누락 |
+| **2. Mixed Content** | HTTP 리소스 | 개발자 도구 Console 확인 |
+| **3. 설정** | 약한 암호화 | SHA-1, MD5 사용 |
+| | 오래된 TLS | TLS 1.0/1.1 (deprecated) |
+
+<details>
+<summary>🛠️ 빠른 진단 명령어</summary>
+
+**인증서 상태 확인:**
+```bash
+openssl s_client -connect example.com:443 -servername example.com 2>/dev/null | \
+  openssl x509 -noout -dates -subject
+
+# 결과 예시:
+# notBefore=Jan 1 00:00:00 2024 GMT
+# notAfter=Apr 1 00:00:00 2024 GMT   ← 만료일 확인!
+# subject=CN = example.com          ← 도메인 확인!
 ```
-[원인 분석 체크리스트]
 
-1. 인증서 문제
-   □ 만료됨
-   □ 도메인 불일치 (www.example.com ≠ example.com)
-   □ 자체 서명 인증서 (CA 검증 불가)
-
-2. Mixed Content
-   □ HTTP 리소스 포함
-
-3. 설정 문제
-   □ 약한 암호화 방식 사용 (예: SHA-1)
-   □ 오래된 TLS 버전 (TLS 1.0/1.1)
+**TLS 버전 및 Cipher Suite 확인:**
+```bash
+nmap --script ssl-enum-ciphers -p 443 example.com
 ```
+
+</details>
 
 ---
 
