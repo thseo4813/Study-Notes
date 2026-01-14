@@ -606,3 +606,447 @@ net.ipv4.tcp_dsack = 1
 
 > 네트워크 프로토콜 선택은 애플리케이션 요구사항과 네트워크 환경에 따라 달라진다. TCP의 신뢰성과 UDP의 효율성을 적절히 활용하여 최적의 시스템을 구축하라.
 
+---
+
+## 14. TCP 소켓 프로그래밍의 실무 패턴
+
+### 14.1 패킷 경계 처리 (Framing) - Sticky Packet 문제 해결
+
+**TCP는 스트림(Stream)이다!**
+
+TCP는 "메시지 경계"를 보장하지 않는다. `send()`를 3번 호출해도, `recv()`가 1번에 다 받을 수 있다.
+
+```
+[Sticky Packet 문제 시나리오]
+
+발신측:
+send("Hello")  →  send("World")  →  send("!")
+
+수신측 (의도):
+recv() = "Hello"
+recv() = "World"
+recv() = "!"
+
+수신측 (실제 - Sticky Packet):
+recv() = "HelloWorld!"  ← 전부 붙어서 옴
+또는
+recv() = "Hel"          ← 잘려서 옴
+recv() = "loWorld!"
+```
+
+**해결책: Length + Body 구조 (TLV 패턴)**
+
+```
+[패킷 포맷 설계]
+
+┌─────────────────────┬─────────────────────────────────┐
+│  Header (4 bytes)   │          Body (가변)            │
+│  데이터 길이        │          실제 데이터            │
+└─────────────────────┴─────────────────────────────────┘
+
+예시:
+[0x00 0x00 0x00 0x05][H][e][l][l][o]
+       (길이 = 5)         (데이터)
+```
+
+**Python 구현:**
+
+```python
+import struct
+
+# === 발신 측: 패킷 구성 ===
+def send_packet(sock, data: bytes):
+    """Length + Body 형식으로 전송"""
+    length = len(data)
+    # '>I' = Big-endian, unsigned int (4 bytes)
+    header = struct.pack('>I', length)
+    sock.sendall(header + data)
+
+# === 수신 측: 패킷 파싱 ===
+def recv_exact(sock, size: int) -> bytes:
+    """정확히 size 바이트를 수신할 때까지 대기"""
+    buffer = b''
+    while len(buffer) < size:
+        chunk = sock.recv(size - len(buffer))
+        if not chunk:
+            raise ConnectionError("연결 끊김")
+        buffer += chunk
+    return buffer
+
+def recv_packet(sock) -> bytes:
+    """Length + Body 형식 패킷 수신"""
+    # 1. 헤더(4바이트)에서 길이 읽기
+    header = recv_exact(sock, 4)
+    length = struct.unpack('>I', header)[0]
+    
+    # 2. Body 읽기
+    data = recv_exact(sock, length)
+    return data
+
+# === 사용 예시 ===
+# 발신
+send_packet(sock, b'Hello')
+send_packet(sock, b'World')
+
+# 수신 (항상 정확하게 분리됨)
+msg1 = recv_packet(sock)  # b'Hello'
+msg2 = recv_packet(sock)  # b'World'
+```
+
+**Go 구현:**
+
+```go
+package main
+
+import (
+    "encoding/binary"
+    "io"
+    "net"
+)
+
+// 패킷 전송
+func SendPacket(conn net.Conn, data []byte) error {
+    // 4바이트 길이 헤더
+    header := make([]byte, 4)
+    binary.BigEndian.PutUint32(header, uint32(len(data)))
+    
+    // 헤더 + 바디 전송
+    if _, err := conn.Write(header); err != nil {
+        return err
+    }
+    if _, err := conn.Write(data); err != nil {
+        return err
+    }
+    return nil
+}
+
+// 패킷 수신
+func RecvPacket(conn net.Conn) ([]byte, error) {
+    // 1. 헤더 읽기 (정확히 4바이트)
+    header := make([]byte, 4)
+    if _, err := io.ReadFull(conn, header); err != nil {
+        return nil, err
+    }
+    
+    // 2. 길이 파싱
+    length := binary.BigEndian.Uint32(header)
+    
+    // 3. 바디 읽기
+    body := make([]byte, length)
+    if _, err := io.ReadFull(conn, body); err != nil {
+        return nil, err
+    }
+    
+    return body, nil
+}
+```
+
+### 14.2 연결 관리 (Keep-Alive & Heartbeat)
+
+**좀비 커넥션(Half-open Connection) 문제**
+
+클라이언트가 갑자기 죽으면(크래시, 네트워크 끊김), 서버는 연결이 끊긴 줄 모른다.
+
+```
+[Half-open 시나리오]
+
+1. 클라이언트 ←── ESTABLISHED ──→ 서버
+2. 클라이언트 갑자기 종료 (FIN 못 보냄)
+3. 서버: 여전히 ESTABLISHED 상태 (좀비 커넥션)
+   └── 리소스(FD, 메모리) 계속 점유
+```
+
+**해결책 1: TCP Keep-Alive (OS 레벨)**
+
+```python
+import socket
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(('server.example.com', 8080))
+
+# TCP Keep-Alive 활성화
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+# Linux 전용: 세부 설정
+sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)   # 60초 유휴 후 시작
+sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)  # 10초 간격 probe
+sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)     # 3번 실패 시 연결 종료
+```
+
+**해결책 2: 애플리케이션 레벨 Heartbeat (권장)**
+
+TCP Keep-Alive는 기본 2시간이라 너무 느리다. **직접 구현**이 낫다.
+
+```python
+import asyncio
+import json
+import time
+
+class HeartbeatConnection:
+    def __init__(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
+        self.last_pong_time = time.time()
+        self.alive = True
+    
+    async def start(self):
+        """Heartbeat 송신/검사 태스크 시작"""
+        await asyncio.gather(
+            self._heartbeat_sender(),
+            self._heartbeat_checker(),
+            self._message_handler()
+        )
+    
+    async def _heartbeat_sender(self):
+        """30초마다 PING 전송"""
+        while self.alive:
+            await asyncio.sleep(30)
+            ping = json.dumps({"type": "PING", "ts": time.time()}).encode() + b'\n'
+            try:
+                self.writer.write(ping)
+                await self.writer.drain()
+            except Exception:
+                self.alive = False
+                break
+    
+    async def _heartbeat_checker(self):
+        """90초 이상 PONG 없으면 연결 종료"""
+        while self.alive:
+            await asyncio.sleep(10)
+            if time.time() - self.last_pong_time > 90:
+                print("⚠️ Heartbeat 실패! 좀비 커넥션 종료")
+                self.alive = False
+                self.writer.close()
+                break
+    
+    async def _message_handler(self):
+        """메시지 수신 처리"""
+        while self.alive:
+            try:
+                line = await self.reader.readline()
+                if not line:
+                    break
+                
+                msg = json.loads(line.decode())
+                
+                if msg.get("type") == "PONG":
+                    self.last_pong_time = time.time()
+                elif msg.get("type") == "PING":
+                    # PING에 대한 PONG 응답
+                    pong = json.dumps({"type": "PONG"}).encode() + b'\n'
+                    self.writer.write(pong)
+                    await self.writer.drain()
+                else:
+                    # 일반 메시지 처리
+                    await self._handle_business_message(msg)
+            except Exception:
+                break
+        
+        self.alive = False
+```
+
+### 14.3 소켓 옵션 튜닝
+
+**필수 옵션 1: `TCP_NODELAY` (Nagle 알고리즘 비활성화)**
+
+Nagle 알고리즘은 작은 패킷을 모아서 보내 네트워크 효율을 높이지만, **실시간성을 희생**한다.
+
+```
+[Nagle 알고리즘 동작]
+
+데이터: "H" → "e" → "l" → "l" → "o" (각각 1바이트 전송 시도)
+
+Nagle ON (기본값):
+- 작은 데이터 모아서 한 번에 전송
+- "Hello" 한 패킷으로 전송 (효율적이지만 지연 발생)
+- ⚠️ 실시간 게임, 채팅에서 지연 발생!
+
+Nagle OFF (TCP_NODELAY):
+- 즉시 전송
+- 5개의 작은 패킷 전송 (오버헤드 있지만 실시간성 확보)
+```
+
+```python
+import socket
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# TCP_NODELAY: Nagle 알고리즘 비활성화 (실시간 통신에 필수!)
+sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+```
+
+```java
+// Java
+socket.setTcpNoDelay(true);
+```
+
+**필수 옵션 2: `SO_REUSEADDR` (주소 재사용)**
+
+서버 재시작 시 `Address already in use` 에러를 방지한다.
+
+```python
+import socket
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# SO_REUSEADDR: TIME_WAIT 상태의 포트도 바인딩 허용
+# 서버 재시작 시 "Address already in use" 방지
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+server.bind(('0.0.0.0', 8080))
+server.listen(128)
+```
+
+```go
+// Go
+listener, err := net.Listen("tcp", ":8080")
+// Go는 기본적으로 SO_REUSEADDR 활성화됨
+
+// 세부 제어가 필요한 경우
+lc := net.ListenConfig{
+    Control: func(network, address string, c syscall.RawConn) error {
+        return c.Control(func(fd uintptr) {
+            syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+        })
+    },
+}
+listener, err := lc.Listen(context.Background(), "tcp", ":8080")
+```
+
+**옵션 3: `SO_LINGER` (연결 종료 동작 제어)**
+
+```python
+import socket
+import struct
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# SO_LINGER: close() 시 동작 제어
+# l_onoff=1, l_linger=0 → RST로 즉시 종료 (TIME_WAIT 없음)
+# l_onoff=1, l_linger=5 → 5초간 전송 버퍼 비우기 시도 후 종료
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+```
+
+### 14.4 소켓 옵션 정리표
+
+| 옵션 | 레벨 | 용도 | 권장 값 |
+|------|------|------|---------|
+| `SO_REUSEADDR` | SOL_SOCKET | 서버 재시작 시 포트 재사용 | **1 (항상)** |
+| `SO_KEEPALIVE` | SOL_SOCKET | 좀비 커넥션 감지 | 1 (필요 시) |
+| `TCP_NODELAY` | IPPROTO_TCP | Nagle 비활성화 (실시간성) | **1 (실시간 필요 시)** |
+| `TCP_KEEPIDLE` | IPPROTO_TCP | Keep-Alive 시작 시간 | 60~600초 |
+| `TCP_KEEPINTVL` | IPPROTO_TCP | Keep-Alive probe 간격 | 10~60초 |
+| `TCP_KEEPCNT` | IPPROTO_TCP | Keep-Alive probe 횟수 | 3~5회 |
+| `SO_LINGER` | SOL_SOCKET | 종료 동작 제어 | 상황에 따라 |
+| `SO_RCVBUF` | SOL_SOCKET | 수신 버퍼 크기 | 자동 튜닝 권장 |
+| `SO_SNDBUF` | SOL_SOCKET | 송신 버퍼 크기 | 자동 튜닝 권장 |
+
+---
+
+## 15. 프로덕션 TCP 서버 템플릿
+
+```python
+"""
+프로덕션 TCP 서버 예시
+- Length-prefixed framing
+- Heartbeat
+- 소켓 옵션 튜닝
+"""
+import asyncio
+import struct
+import time
+import json
+
+class ProductionTCPServer:
+    def __init__(self, host='0.0.0.0', port=8080):
+        self.host = host
+        self.port = port
+        self.clients = {}
+    
+    async def start(self):
+        server = await asyncio.start_server(
+            self._handle_client, 
+            self.host, 
+            self.port,
+            reuse_address=True,  # SO_REUSEADDR
+            start_serving=True
+        )
+        print(f"🚀 Server started on {self.host}:{self.port}")
+        async with server:
+            await server.serve_forever()
+    
+    async def _handle_client(self, reader, writer):
+        addr = writer.get_extra_info('peername')
+        print(f"📥 Client connected: {addr}")
+        
+        # 소켓 옵션 설정
+        sock = writer.get_extra_info('socket')
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # 실시간성
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)  # Keep-Alive
+        
+        client_id = f"{addr[0]}:{addr[1]}"
+        self.clients[client_id] = {
+            'writer': writer,
+            'last_active': time.time()
+        }
+        
+        try:
+            while True:
+                # Length-prefixed 패킷 수신
+                header = await reader.readexactly(4)
+                length = struct.unpack('>I', header)[0]
+                
+                if length > 1024 * 1024:  # 1MB 제한
+                    print(f"⚠️ 패킷 크기 초과: {length}")
+                    break
+                
+                data = await reader.readexactly(length)
+                self.clients[client_id]['last_active'] = time.time()
+                
+                # 메시지 처리
+                response = await self._process_message(data)
+                
+                # 응답 전송
+                await self._send_packet(writer, response)
+                
+        except asyncio.IncompleteReadError:
+            print(f"📤 Client disconnected: {addr}")
+        except Exception as e:
+            print(f"❌ Error: {e}")
+        finally:
+            del self.clients[client_id]
+            writer.close()
+            await writer.wait_closed()
+    
+    async def _send_packet(self, writer, data: bytes):
+        """Length-prefixed 패킷 전송"""
+        header = struct.pack('>I', len(data))
+        writer.write(header + data)
+        await writer.drain()
+    
+    async def _process_message(self, data: bytes) -> bytes:
+        """비즈니스 로직 처리"""
+        try:
+            msg = json.loads(data.decode())
+            
+            if msg.get('type') == 'PING':
+                return json.dumps({'type': 'PONG'}).encode()
+            
+            # ... 다른 메시지 처리
+            return json.dumps({'status': 'ok'}).encode()
+            
+        except Exception as e:
+            return json.dumps({'error': str(e)}).encode()
+
+if __name__ == '__main__':
+    import socket
+    server = ProductionTCPServer()
+    asyncio.run(server.start())
+```
+
+---
+
+> **다음 학습 추천:**
+> - `tcp-performance-tuning.md`: TIME_WAIT, 큐 관리, 커널 파라미터 튜닝
+> - `../01-os/process-vs-thread/README.md`: File Descriptor 제한과 I/O 모델
+

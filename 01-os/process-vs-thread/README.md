@@ -520,8 +520,284 @@ public:
 
 ---
 
+## 9. 대규모 연결 처리를 위한 리소스 제한 해제
+
+동시 접속이 많은 서버(웹 서버, 게임 서버, 채팅 서버)를 운영할 때 가장 먼저 부딪히는 벽이 **OS 리소스 제한**이다.
+
+### 9.1 File Descriptor (FD)란?
+
+**리눅스에서는 "모든 것이 파일"이다** - 소켓도 파일로 취급된다.
+
+```
+[File Descriptor 개념]
+
+┌─────────────────────────────────────────────────────────┐
+│                    프로세스                              │
+│                                                         │
+│   FD 테이블:                                            │
+│   ┌─────┬─────────────────────────────────┐             │
+│   │ FD  │ 가리키는 대상                   │             │
+│   ├─────┼─────────────────────────────────┤             │
+│   │  0  │ stdin (표준 입력)               │             │
+│   │  1  │ stdout (표준 출력)              │             │
+│   │  2  │ stderr (표준 에러)              │             │
+│   │  3  │ /var/log/app.log (파일)         │             │
+│   │  4  │ TCP Socket (192.168.1.1:8080)   │ ← 소켓도 FD │
+│   │  5  │ TCP Socket (192.168.1.2:8080)   │             │
+│   │ ... │ ...                             │             │
+│   └─────┴─────────────────────────────────┘             │
+└─────────────────────────────────────────────────────────┘
+
+동시 접속 10,000명 = FD 10,000개 이상 필요!
+```
+
+### 9.2 "Too many open files" 에러
+
+```bash
+# 문제 상황: 동시 접속 2000명 이상 시 에러 발생
+$ tail -f /var/log/app.log
+[ERROR] accept() failed: Too many open files
+[ERROR] socket() failed: Too many open files
+```
+
+**원인: FD 제한에 걸림**
+
+```bash
+# 현재 제한 확인
+$ ulimit -n
+1024  # 기본값: 프로세스당 1024개 파일만 열 수 있음
+
+# 시스템 전체 FD 사용량 확인
+$ cat /proc/sys/fs/file-nr
+3200    0    6815744
+# 현재 사용 중 / 할당됐지만 미사용 / 최대값
+```
+
+### 9.3 ulimit 설정 (Soft/Hard Limit)
+
+```bash
+# === 임시 설정 (현재 세션만) ===
+$ ulimit -n 65535
+
+# === 영구 설정 ===
+# /etc/security/limits.conf
+
+# 형식: <유저>  <soft/hard>  <항목>  <값>
+
+# 특정 유저
+nginx    soft    nofile    65535
+nginx    hard    nofile    65535
+
+# 모든 유저 (권장하지 않음)
+*        soft    nofile    65535
+*        hard    nofile    65535
+
+# systemd 서비스의 경우 별도 설정 필요
+# /etc/systemd/system/myapp.service
+[Service]
+LimitNOFILE=65535
+```
+
+**Soft Limit vs Hard Limit:**
+
+| 구분 | 설명 | 누가 변경 가능? |
+|------|------|----------------|
+| **Soft Limit** | 현재 적용되는 제한 | 일반 유저 (Hard까지) |
+| **Hard Limit** | Soft의 최대 상한선 | root만 변경 가능 |
+
+### 9.4 시스템 전역 FD 제한
+
+프로세스별 제한 외에, **시스템 전체**에도 제한이 있다.
+
+```bash
+# /etc/sysctl.conf 또는 /etc/sysctl.d/99-file-limits.conf
+
+# 시스템 전체 최대 FD 수
+fs.file-max = 2097152
+
+# 단일 프로세스가 열 수 있는 FD 최대 수
+fs.nr_open = 2097152
+
+# 적용
+$ sysctl -p
+```
+
+### 9.5 I/O 모델과 대규모 트래픽 처리
+
+**문제: Blocking I/O + 스레드 모델의 한계**
+
+```
+[Blocking I/O 모델]
+
+클라이언트 1 ─────→ 스레드 1 ───→ recv() ─── 대기중... ───→ 처리
+클라이언트 2 ─────→ 스레드 2 ───→ recv() ─── 대기중... ───→ 처리
+클라이언트 3 ─────→ 스레드 3 ───→ recv() ─── 대기중... ───→ 처리
+...
+클라이언트 10000 → 스레드 10000 → recv() ─ 대기중... ─→ 처리
+
+⚠️ 문제:
+- 10,000개 스레드 = 10GB 메모리 (스레드당 1MB 스택)
+- Context Switching 오버헤드 폭발
+- CPU는 10% 밖에 안 쓰는데 서버가 터짐
+```
+
+**해결책: Non-blocking I/O + Event Loop (멀티플렉싱)**
+
+```
+[Event Loop 모델 (epoll/kqueue)]
+
+                    ┌───────────────────────────────────────┐
+                    │         이벤트 루프 (1개 스레드)       │
+                    │                                       │
+클라이언트 1 ───────┤   epoll_wait()로 10,000개 소켓 감시   │
+클라이언트 2 ───────┤                                       │
+클라이언트 3 ───────┤   → 데이터 온 소켓만 처리             │
+...                 │   → 나머지는 대기 (CPU 안 씀)         │
+클라이언트 10000 ───┤                                       │
+                    └───────────────────────────────────────┘
+
+✅ 장점:
+- 1개 스레드로 10,000개 연결 처리
+- 메모리 사용량 극소 (수십 MB)
+- Context Switching 없음
+```
+
+### 9.6 I/O 모델 비교
+
+| 모델 | 동작 방식 | 장점 | 단점 | 사용 예 |
+|------|----------|------|------|--------|
+| **Blocking I/O** | read()가 데이터 올 때까지 대기 | 코드 단순 | 대규모 연결 불가 | 간단한 CLI 툴 |
+| **Non-blocking I/O** | read()가 즉시 반환 (EAGAIN) | 스레드 점유 안 함 | 폴링 필요 | 저수준 라이브러리 |
+| **I/O Multiplexing** | select/poll/epoll로 다중 FD 감시 | 대규모 연결 처리 | 콜백 복잡 | Nginx, Node.js |
+| **Async I/O (io_uring)** | 커널이 완료 통지 | 최고 성능 | 복잡함 | 최신 DB 엔진 |
+
+### 9.7 epoll 기반 서버 예시
+
+```c
+// Linux epoll을 사용한 대규모 연결 처리
+
+#include <sys/epoll.h>
+#include <fcntl.h>
+
+#define MAX_EVENTS 10000
+
+int main() {
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    
+    // Non-blocking 모드 설정
+    fcntl(server_fd, F_SETFL, O_NONBLOCK);
+    
+    // 소켓 옵션
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
+    // 바인드 & 리슨
+    bind(server_fd, ...);
+    listen(server_fd, 65535);  // 큰 backlog
+    
+    // epoll 인스턴스 생성
+    int epoll_fd = epoll_create1(0);
+    
+    // 서버 소켓을 epoll에 등록
+    struct epoll_event ev;
+    ev.events = EPOLLIN | EPOLLET;  // Edge Triggered
+    ev.data.fd = server_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &ev);
+    
+    struct epoll_event events[MAX_EVENTS];
+    
+    while (1) {
+        // 이벤트 대기 (최대 10,000개 동시 처리)
+        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+        
+        for (int i = 0; i < nfds; i++) {
+            if (events[i].data.fd == server_fd) {
+                // 새 연결 수락
+                while (1) {
+                    int client_fd = accept(server_fd, NULL, NULL);
+                    if (client_fd == -1) break;  // EAGAIN
+                    
+                    fcntl(client_fd, F_SETFL, O_NONBLOCK);
+                    
+                    ev.events = EPOLLIN | EPOLLET;
+                    ev.data.fd = client_fd;
+                    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &ev);
+                }
+            } else {
+                // 클라이언트 데이터 처리
+                handle_client(events[i].data.fd);
+            }
+        }
+    }
+}
+```
+
+### 9.8 프로덕션 서버 리소스 설정 체크리스트
+
+```bash
+# === 1. FD 제한 확인 ===
+$ ulimit -n                    # 프로세스 제한 (65535 권장)
+$ cat /proc/sys/fs/file-max   # 시스템 제한 (2097152 권장)
+
+# === 2. 현재 FD 사용량 모니터링 ===
+$ ls /proc/$(pidof nginx)/fd | wc -l   # 특정 프로세스의 FD 수
+$ cat /proc/sys/fs/file-nr             # 시스템 전체 FD 현황
+
+# === 3. 네트워크 관련 제한 ===
+$ sysctl net.core.somaxconn           # Accept Queue (65535 권장)
+$ sysctl net.ipv4.tcp_max_syn_backlog # SYN Queue (65535 권장)
+
+# === 4. 메모리 관련 ===
+$ sysctl vm.max_map_count             # mmap 제한 (65535+ 권장)
+```
+
+**프로덕션 설정 템플릿:**
+
+```bash
+# /etc/sysctl.d/99-high-performance.conf
+
+# FD 제한
+fs.file-max = 2097152
+fs.nr_open = 2097152
+
+# 네트워크 큐
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
+
+# 메모리
+vm.max_map_count = 262144
+
+# TCP 튜닝
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.ip_local_port_range = 10000 65535
+```
+
+```bash
+# /etc/security/limits.d/99-nofile.conf
+*    soft    nofile    65535
+*    hard    nofile    65535
+root soft    nofile    65535
+root hard    nofile    65535
+```
+
+### 9.9 정리: C10K → C10M 문제 해결
+
+| 병목 | 증상 | 해결책 |
+|------|------|--------|
+| **FD 제한** | Too many open files | `ulimit -n`, `fs.file-max` |
+| **Accept Queue** | Connection refused | `somaxconn`, `backlog` |
+| **메모리** | OOM Killer | Event Loop 모델 전환 |
+| **Context Switch** | CPU 100% 인데 처리량 낮음 | Non-blocking I/O |
+| **포트 고갈** | Cannot assign address | `tcp_tw_reuse`, 커넥션 풀 |
+
+---
+
 ### Next Step
 
 동시성 문제를 다루다 보면 자연스럽게 **"그럼 I/O 작업(DB 조회, 네트워크)을 기다릴 때 스레드는 뭐 하나?"**라는 의문이 생깁니다.
 
 이와 연결되는 **[I/O 모델] Sync/Async vs Blocking/Non-blocking** 주제로 넘어가서, Node.js나 Redis가 싱글 스레드임에도 왜 그렇게 빠른지(이벤트 루프) 정리해 드릴까요?
+
+> **관련 문서:**
+> - `../02-network/tcp-performance-tuning.md`: TCP 커널 파라미터 튜닝
+> - `../02-network/tcp-vs-udp/README.md`: 소켓 프로그래밍 실무 패턴
