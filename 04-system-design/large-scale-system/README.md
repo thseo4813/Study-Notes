@@ -449,50 +449,52 @@ async def process_order_async(order):
 
 ---
 
-## 11. 장애 격리 전략: 타임아웃과 회복 탄력성 (Resilience Patterns)
+## 11. 장애 격리 전략 (Resilience Patterns)
 
-분산 시스템에서 **한 서비스의 장애가 전체 시스템으로 전파되는 것(Cascading Failure)**을 막는 것이 핵심이다.
+> **이 섹션의 목표**  
+> 한 서비스의 장애가 전체 시스템으로 전파되는 것(**Cascading Failure**)을 막는다.
 
-### 11.1 타임아웃 계층화 (Timeout Layering)
+---
 
-**문제: 고아 요청(Orphaned Request)**
-
-클라이언트가 먼저 포기했는데, 서버는 여전히 작업 중인 상황이다.
-
-```
-[고아 요청 발생 시나리오]
-
-Client ──(timeout 3초)──> Load Balancer ──(timeout 60초)──> Server
-   │                            │                             │
-   │ 3초 후 "응답 없음" 에러     │                             │ 30초 후 작업 완료
-   │                            │ 여전히 기다리는 중            │ 응답 전송 → ❌ 어디로?
-   ↓                            ↓                             ↓
-클라이언트는 재시도         LB는 리소스 점유              서버 리소스 낭비
-```
-
-**해결책: 바깥쪽(Client)에서 안쪽(Server)으로 갈수록 타임아웃을 길게**
+### 📌 핵심 요약
 
 ```
-[올바른 타임아웃 계층화]
-
-Client(3초) < API Gateway(5초) < Load Balancer(10초) < Server(15초) < Database(20초)
-
-Client ──(3초)──> Gateway ──(5초)──> LB ──(10초)──> Server ──(15초)──> DB
+┌─────────────────────────────────────────────────────────────┐
+│  장애 격리 4대 패턴                                         │
+├─────────────────────────────────────────────────────────────┤
+│  1. 타임아웃 계층화  → 고아 요청 방지                       │
+│  2. 지수 백오프      → 재시도 폭탄 방지                     │
+│  3. 서킷 브레이커    → 연쇄 장애 차단                       │
+│  4. 격벽(Bulkhead)   → 리소스 격리                          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**실제 설정 예시:**
+---
 
-```yaml
-# API Gateway (Kong, AWS API Gateway 등)
-timeout:
-  connect: 3000    # 연결 타임아웃 3초
-  read: 5000       # 응답 대기 5초
-  write: 5000      # 요청 전송 5초
+### 11.1 타임아웃 계층화
+
+#### 🚨 문제: 고아 요청 (Orphaned Request)
+
+클라이언트가 먼저 포기했는데, 서버는 여전히 작업 중인 상황.
+
+```
+Client (3초 타임아웃) ─────> LB (60초 타임아웃) ─────> Server
+   │                              │                      │
+   │ 3초 후 포기                  │ 아직 기다리는 중      │ 30초 후 완료
+   │ 재시도 시작                  │                      │ 응답 → 어디로? ❌
+   ↓                              ↓                      ↓
+  재시도로 부하 증가          리소스 점유 낭비       헛수고
+```
+
+#### ✅ 해결: 바깥쪽 → 안쪽으로 타임아웃 증가
+
+```
+Client(3초) < Gateway(5초) < LB(10초) < Server(15초) < DB(20초)
 ```
 
 ```java
-// Spring WebClient 설정
-WebClient webClient = WebClient.builder()
+// Spring WebClient
+WebClient client = WebClient.builder()
     .clientConnector(new ReactorClientHttpConnector(
         HttpClient.create()
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3000)  // 연결 3초
@@ -501,246 +503,117 @@ WebClient webClient = WebClient.builder()
     .build();
 ```
 
-```go
-// Go HTTP Client
-client := &http.Client{
-    Timeout: 5 * time.Second,  // 전체 요청 타임아웃
-    Transport: &http.Transport{
-        DialContext: (&net.Dialer{
-            Timeout: 3 * time.Second,  // 연결 타임아웃
-        }).DialContext,
-        ResponseHeaderTimeout: 4 * time.Second,  // 응답 헤더 대기
-    },
-}
-```
+---
 
-### 11.2 재시도(Retry) 전략
+### 11.2 재시도 전략
 
-**무조건 재시도는 독이다!**
+#### 🚨 문제: 재시도 폭탄 (Thundering Herd)
 
 ```
-[재시도 폭탄 시나리오]
-
-Server 과부하 상태 (응답 지연)
+서버 과부하 상태
     ↓
-Client 1: 타임아웃 → 재시도 → 재시도 → 재시도 (3배 부하)
-Client 2: 타임아웃 → 재시도 → 재시도 → 재시도 (3배 부하)
-... (1000명)
-    ↓
-Server 완전히 죽음 (Thundering Herd)
+1000명 동시 재시도 → 서버 부하 3배 → 완전히 죽음 💀
 ```
 
-**올바른 재시도 정책:**
+#### ✅ 해결: 지수 백오프 + Jitter
 
-| 항목 | 잘못된 방식 | 올바른 방식 |
-|------|------------|------------|
-| **재시도 횟수** | 무한 재시도 | 최대 3회 |
-| **재시도 간격** | 즉시 재시도 | 지수 백오프 (1초 → 2초 → 4초) |
-| **재시도 대상** | 모든 에러 | 5xx, 네트워크 에러만 (4xx는 재시도 금지) |
-| **동시 재시도** | 모든 클라이언트 동시 | Jitter로 분산 |
-
-**지수 백오프(Exponential Backoff) + Jitter 구현:**
+| 항목 | ❌ 잘못된 방식 | ✅ 올바른 방식 |
+|------|--------------|---------------|
+| 재시도 횟수 | 무한 | **최대 3회** |
+| 재시도 간격 | 즉시 | **1초 → 2초 → 4초** |
+| 재시도 대상 | 모든 에러 | **5xx만** (4xx는 금지) |
+| 동시 재시도 | 모두 동시 | **Jitter로 분산** |
 
 ```python
-import random
-import time
-
-def retry_with_backoff(func, max_retries=3, base_delay=1.0, max_delay=30.0):
-    """지수 백오프 + Jitter를 적용한 재시도"""
+def retry_with_backoff(func, max_retries=3):
     for attempt in range(max_retries):
         try:
             return func()
-        except RetryableError as e:
+        except RetryableError:
             if attempt == max_retries - 1:
-                raise e
+                raise
             
-            # 지수 백오프: 1초 → 2초 → 4초 → ...
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            # 지수 백오프: 1초 → 2초 → 4초
+            delay = 2 ** attempt
             
-            # Jitter 추가: 0% ~ 100% 랜덤 지연
-            # 모든 클라이언트가 동시에 재시도하는 것을 방지
+            # Jitter: 랜덤하게 분산 (동시 재시도 방지)
             jitter = delay * random.random()
-            actual_delay = delay + jitter
             
-            print(f"재시도 {attempt + 1}/{max_retries}, {actual_delay:.2f}초 후 재시도")
-            time.sleep(actual_delay)
+            time.sleep(delay + jitter)
 ```
+
+---
+
+### 11.3 서킷 브레이커
+
+#### 💡 개념: 빠른 실패 (Fail Fast)
+
+장애 서비스에 계속 요청 → 호출하는 쪽도 타임아웃으로 죽음
+
+**서킷 브레이커 = 전기 차단기처럼 동작**
+
+```
+┌─────────┐   실패율 50% 초과   ┌─────────┐
+│ CLOSED  │ ─────────────────> │  OPEN   │
+│ (정상)  │                    │ (차단)  │
+└────┬────┘                    └────┬────┘
+     │                              │
+     │ 성공                  30초 후 │
+     │                              ▼
+     │                        ┌──────────┐
+     └─────────────────────── │HALF-OPEN │
+                              │ (테스트) │
+                              └──────────┘
+```
+
+| 상태 | 동작 |
+|------|------|
+| **CLOSED** | 정상. 모든 요청 통과 |
+| **OPEN** | 차단. 요청 즉시 실패 반환 (빠른 실패) |
+| **HALF-OPEN** | 일부 요청만 통과시켜 복구 확인 |
 
 ```java
-// Spring Retry with Backoff
-@Retryable(
-    value = {ServiceUnavailableException.class, SocketTimeoutException.class},
-    maxAttempts = 3,
-    backoff = @Backoff(
-        delay = 1000,        // 초기 지연 1초
-        multiplier = 2,      // 2배씩 증가
-        maxDelay = 10000,    // 최대 10초
-        random = true        // Jitter 활성화
-    )
-)
-public Response callExternalService() {
-    return externalClient.call();
-}
-```
-
-### 11.3 서킷 브레이커(Circuit Breaker)
-
-**빠른 실패(Fail Fast)로 연쇄 장애 차단**
-
-장애가 발생한 서비스에 계속 요청을 보내면, 호출하는 쪽도 타임아웃으로 리소스를 낭비한다.
-
-```
-[서킷 브레이커 상태 전이]
-
-        ┌────────────────────────────────────────┐
-        │                                        │
-        ▼                                        │
-   ┌─────────┐    실패율 > 임계값    ┌─────────┐ │
-   │ CLOSED  │ ─────────────────────> │  OPEN   │ │
-   │ (정상)  │                        │ (차단)  │ │
-   └─────────┘                        └─────────┘ │
-        ▲                                  │      │
-        │                      일정 시간 후 │      │
-        │                                  ▼      │
-        │                           ┌──────────┐  │
-        │       성공                │HALF-OPEN │  │
-        └─────────────────────────  │ (테스트) │ ─┘
-                                    └──────────┘
-                                          │ 실패
-                                          └──────┘
-```
-
-**상태별 동작:**
-- **CLOSED (닫힘):** 정상 상태. 모든 요청 통과.
-- **OPEN (열림):** 장애 감지. 모든 요청 즉시 실패 반환 (Fail Fast).
-- **HALF-OPEN (반열림):** 일정 시간 후 일부 요청만 통과시켜 복구 확인.
-
-**Resilience4j 구현 예시:**
-
-```java
-// 서킷 브레이커 설정
+// Resilience4j 설정
 CircuitBreakerConfig config = CircuitBreakerConfig.custom()
-    .failureRateThreshold(50)                    // 실패율 50% 이상이면 OPEN
-    .slowCallRateThreshold(80)                   // 느린 호출 80% 이상이면 OPEN
-    .slowCallDurationThreshold(Duration.ofSeconds(2))  // 2초 이상 = 느린 호출
-    .waitDurationInOpenState(Duration.ofSeconds(30))   // OPEN 상태 30초 유지
-    .slidingWindowSize(10)                       // 최근 10개 요청 기준
-    .minimumNumberOfCalls(5)                     // 최소 5개 요청 후 판단
+    .failureRateThreshold(50)           // 실패율 50% → OPEN
+    .waitDurationInOpenState(Duration.ofSeconds(30))  // 30초 후 HALF-OPEN
+    .slidingWindowSize(10)              // 최근 10개 요청 기준
     .build();
-
-CircuitBreaker circuitBreaker = CircuitBreaker.of("externalService", config);
-
-// 서킷 브레이커 적용
-Supplier<Response> decoratedSupplier = CircuitBreaker
-    .decorateSupplier(circuitBreaker, () -> externalClient.call());
-
-try {
-    Response response = decoratedSupplier.get();
-} catch (CallNotPermittedException e) {
-    // 서킷 OPEN 상태 - 빠른 실패
-    return fallbackResponse();
-}
 ```
 
-```go
-// Go: sony/gobreaker 라이브러리
-cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
-    Name:        "external-api",
-    MaxRequests: 3,                    // HALF-OPEN에서 허용할 요청 수
-    Interval:    10 * time.Second,     // 통계 리셋 주기
-    Timeout:     30 * time.Second,     // OPEN → HALF-OPEN 전환 시간
-    ReadyToTrip: func(counts gobreaker.Counts) bool {
-        // 실패율 50% 이상이면 OPEN
-        failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-        return counts.Requests >= 5 && failureRatio >= 0.5
-    },
-})
+---
 
-result, err := cb.Execute(func() (interface{}, error) {
-    return callExternalAPI()
-})
-```
+### 11.4 격벽 (Bulkhead) 패턴
 
-### 11.4 Bulkhead (격벽) 패턴
-
-배의 격벽처럼, **서비스별로 리소스를 분리**하여 한 서비스 장애가 다른 서비스에 영향 미치지 않도록 한다.
+#### 💡 개념: 서비스별 리소스 분리
 
 ```
-[격벽 없음 - 연쇄 장애]
+❌ 격벽 없음 (연쇄 장애)
+┌──────────────────────────────────┐
+│      공유 스레드 풀 (100개)       │
+│  Service A: 50개 점유 (느림)     │
+│  Service B: 50개 → 대기! ❌      │
+│  Service C: 0개 → 대기! ❌       │
+└──────────────────────────────────┘
 
-┌──────────────────────────────────────┐
-│         공유 스레드 풀 (100개)        │
-│  Service A: 50개 점유 (느림)          │
-│  Service B: 50개 점유 → ❌ 대기!      │
-│  Service C: 0개 → ❌ 대기!            │
-└──────────────────────────────────────┘
-
-[격벽 적용 - 장애 격리]
-
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ Service A    │ │ Service B    │ │ Service C    │
-│ Pool: 30개   │ │ Pool: 30개   │ │ Pool: 30개   │
-│ (느림, 꽉참) │ │ (정상 동작)  │ │ (정상 동작)  │
-└──────────────┘ └──────────────┘ └──────────────┘
+✅ 격벽 적용 (장애 격리)
+┌────────────┐ ┌────────────┐ ┌────────────┐
+│ Service A  │ │ Service B  │ │ Service C  │
+│ Pool: 30개 │ │ Pool: 30개 │ │ Pool: 30개 │
+│ (느림,꽉참)│ │ (정상 ✅)  │ │ (정상 ✅)  │
+└────────────┘ └────────────┘ └────────────┘
 ```
 
-```java
-// Resilience4j Bulkhead
-BulkheadConfig bulkheadConfig = BulkheadConfig.custom()
-    .maxConcurrentCalls(30)              // 최대 동시 호출 30개
-    .maxWaitDuration(Duration.ofMillis(500))  // 대기 최대 500ms
-    .build();
+---
 
-Bulkhead bulkhead = Bulkhead.of("serviceA", bulkheadConfig);
-
-// 서킷 브레이커 + 격벽 조합
-Supplier<Response> decorated = Decorators.ofSupplier(() -> callServiceA())
-    .withBulkhead(bulkhead)
-    .withCircuitBreaker(circuitBreaker)
-    .withRetry(retry)
-    .decorate();
-```
-
-### 11.5 장애 격리 아키텍처 종합
-
-```
-[프로덕션 장애 격리 구조]
-
-                    ┌─────────────────────────────────┐
-                    │          API Gateway            │
-                    │  - Rate Limiting                │
-                    │  - 글로벌 타임아웃 (10초)        │
-                    └───────────────┬─────────────────┘
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        │                           │                           │
-        ▼                           ▼                           ▼
-┌───────────────┐         ┌───────────────┐         ┌───────────────┐
-│  Service A    │         │  Service B    │         │  Service C    │
-│ ┌───────────┐ │         │ ┌───────────┐ │         │ ┌───────────┐ │
-│ │Circuit    │ │         │ │Circuit    │ │         │ │Circuit    │ │
-│ │Breaker    │ │         │ │Breaker    │ │         │ │Breaker    │ │
-│ ├───────────┤ │         │ ├───────────┤ │         │ ├───────────┤ │
-│ │Bulkhead   │ │         │ │Bulkhead   │ │         │ │Bulkhead   │ │
-│ │(30 slots) │ │         │ │(50 slots) │ │         │ │(20 slots) │ │
-│ ├───────────┤ │         │ ├───────────┤ │         │ ├───────────┤ │
-│ │Retry      │ │         │ │Retry      │ │         │ │Retry      │ │
-│ │+ Backoff  │ │         │ │+ Backoff  │ │         │ │+ Backoff  │ │
-│ └───────────┘ │         │ └───────────┘ │         │ └───────────┘ │
-│     │         │         │     │         │         │     │         │
-│     ▼         │         │     ▼         │         │     ▼         │
-│ External API  │         │  Database     │         │ Message Queue │
-└───────────────┘         └───────────────┘         └───────────────┘
-```
-
-### 11.6 핵심 정리
+### 📋 장애 격리 패턴 요약
 
 | 패턴 | 목적 | 적용 시점 |
 |------|------|----------|
-| **타임아웃 계층화** | 고아 요청 방지, 리소스 회수 | 모든 외부 호출 |
-| **지수 백오프 + Jitter** | Thundering Herd 방지 | 재시도 로직 |
-| **서킷 브레이커** | 연쇄 장애 차단, Fail Fast | 외부 서비스 호출 |
-| **격벽(Bulkhead)** | 장애 격리, 리소스 보호 | 서비스별 스레드 풀 |
+| **타임아웃 계층화** | 고아 요청 방지 | 모든 외부 호출 |
+| **지수 백오프 + Jitter** | 재시도 폭탄 방지 | 재시도 로직 |
+| **서킷 브레이커** | 연쇄 장애 차단 | 외부 서비스 호출 |
+| **격벽(Bulkhead)** | 리소스 격리 | 서비스별 스레드 풀 |
 
-> **Pro Tip:** 이 4가지 패턴은 단독이 아닌 **조합**으로 사용해야 효과적이다.
-> `Bulkhead` → `CircuitBreaker` → `Retry with Backoff` → `Timeout` 순서로 적용하라.
+> 💡 **Pro Tip:** 4가지 패턴은 **조합**으로 사용해야 효과적이다.  
+> 적용 순서: `Bulkhead` → `CircuitBreaker` → `Retry` → `Timeout`
