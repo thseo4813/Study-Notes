@@ -8,8 +8,13 @@
 ```java
 // ❌ 문제 있는 코드
 double price = 9999.99;
-double tax = price * 0.1;  // 999.999...원이 됨
-double total = price + tax; // 10999.989...원이 됨
+double tax = price * 0.1;          // tax.toString()은 999.999로 보일 수 있음
+double total = price + tax;        // total.toString()은 10999.989로 보일 수 있음
+
+// 하지만 "표면상" 깔끔해 보이는 값도, 내부적으로는 미세 오차가 있을 수 있음.
+// Example (IEEE 754 double, 17 digits):
+// tax   ≈ 999.99900000000002
+// total ≈ 10999.989000000000
 ```
 
 **⭐ 리뷰 시스템 (배달의민족, 쿠팡)**
@@ -240,7 +245,7 @@ long safeAdd(int a, int b) {
 ```
 123.456 = 1.23456 × 10²
 컴퓨터: 1.23456 × 2^7 (2진수로 변환)
-저장: 부호=0, 지수=7, 가수=23456...
+저장: 부호=0, 지수=7, 가수는 유한 비트(23/52비트)에 맞춰 근사값으로 저장
 ```
 
 **📊 각 타입의 특징:**
@@ -285,13 +290,13 @@ System.out.println(0.1 + 0.2 == 0.3);  // false!
 0.8 × 2 = 1.6 → 1 (올림, 0.6 남음)
 0.6 × 2 = 1.2 → 1 (올림, 0.2 남음)
 0.2 × 2 = 0.4 → 0 (버림, 0.4 남음)
-... (무한 반복!)
+이후 동일한 패턴이 반복되어 끝나지 않음 (무한 반복)
 ```
 
 **결과:** 0.1은 2진수로 **무한 소수**가 되어 근사값으로 저장됩니다.
 
 **💡 실제 영향:**
-- **가격 계산**: 10.1원 × 3 = 30.299999...원
+- **가격 계산**: 10.1원 × 3 = 30.299999999999997 같은 값이 나올 수 있음
 - **이자 계산**: 0.05% 이자가 부정확하게 계산됨
 - **거리 계산**: GPS 좌표 오차 발생
 
@@ -630,22 +635,98 @@ CREATE TABLE scientific_measurements (
 
 **API 설계:**
 ```java
-// 클라이언트 ↔ 서버 간 안전한 숫자 전송
+// Safe money transfer example (simplified).
+// Key idea: transport as string, validate scale, store as integer cents.
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Objects;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
 @RestController
 public class FinancialAPI {
+    private final TransferService transferService = new InMemoryTransferService();
+
     @PostMapping("/transfer")
     public ResponseEntity<?> transferMoney(@RequestBody TransferRequest request) {
-        // 문자열로 받은 금액을 BigDecimal로 변환
-        BigDecimal amount = new BigDecimal(request.getAmountString());
-
-        // 유효성 검증
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            return ResponseEntity.badRequest().body("금액은 0보다 커야 합니다");
+        String raw = request.getAmountString();
+        if (raw == null || raw.isBlank()) {
+            return ResponseEntity.badRequest().body("amountString is required");
         }
 
-        // 센트 단위로 변환하여 저장
-        long cents = amount.multiply(new BigDecimal("100")).longValue();
-        // ... 저장 로직
+        final BigDecimal amount;
+        try {
+            amount = new BigDecimal(raw);
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().body("invalid amountString");
+        }
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return ResponseEntity.badRequest().body("amount must be > 0");
+        }
+
+        // Reject fractions beyond cents (e.g., 10.001) instead of silently rounding.
+        final BigDecimal normalized;
+        try {
+            normalized = amount.setScale(2, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException e) {
+            return ResponseEntity.badRequest().body("amount must have at most 2 decimal places");
+        }
+
+        // Store as integer cents to avoid floating point errors.
+        long cents = normalized.movePointRight(2).longValueExact();
+        String transferId = transferService.createTransfer(cents);
+
+        return ResponseEntity.ok(new TransferResponse(transferId, cents));
+    }
+
+    public static final class TransferRequest {
+        private String amountString;
+
+        public String getAmountString() {
+            return amountString;
+        }
+
+        public void setAmountString(String amountString) {
+            this.amountString = amountString;
+        }
+    }
+
+    public static final class TransferResponse {
+        private final String transferId;
+        private final long cents;
+
+        public TransferResponse(String transferId, long cents) {
+            this.transferId = transferId;
+            this.cents = cents;
+        }
+
+        public String getTransferId() {
+            return transferId;
+        }
+
+        public long getCents() {
+            return cents;
+        }
+    }
+
+    interface TransferService {
+        String createTransfer(long cents);
+    }
+
+    static final class InMemoryTransferService implements TransferService {
+        private long seq = 0;
+
+        @Override
+        public synchronized String createTransfer(long cents) {
+            Objects.checkIndex(0, 1); // no-op: keeps example self-contained with basic validation import usage
+            seq++;
+            return "tr_" + seq;
+        }
     }
 }
 ```
@@ -734,14 +815,15 @@ public void testPrecision() {
 ### 8.1 카카오페이 송금: 소액 정밀도 문제
 
 **🚨 실제 문제 상황:**
-- 500원 송금 시 499.999999...원 도착
+- 수수료/환율/포인트 같은 "소수 비율"이 섞이면, 최종 금액이 깔끔한 소수로 떨어지지 않고 미세 오차가 섞일 수 있음
 - 고객 불만과 환불 요청 발생
 
 **❌ 문제 코드 (실제 서비스에서 발견):**
 ```java
 public double calculateTransferFee(double amount, double feeRate) {
-    double fee = amount * feeRate;  // 500 * 0.002 = 0.999999...
-    double finalAmount = amount - fee;  // 499.000001...원?
+    // Example: amount=500, feeRate=0.0017 (0.17%)
+    double fee = amount * feeRate;       // fee ≈ 0.84999999999999998
+    double finalAmount = amount - fee;   // finalAmount ≈ 499.14999999999998
     return finalAmount;
 }
 ```
@@ -771,7 +853,7 @@ long result = calculateTransferAmount(50000, 20);  // 500원, 0.2% 수수료
 ### 8.2 배달의민족: 리뷰 평점 계산
 
 **🚨 실제 문제 상황:**
-- 4.5점 평균 평점이 4.499999...점으로 표시
+- 4.5점 평균 평점이 4.4999999999999991처럼 표시되는 경우가 있음
 - 사용자 불만과 신뢰도 저하
 
 **❌ 문제 코드:**

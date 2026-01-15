@@ -258,7 +258,7 @@ D+3일: TTL을 3600초(1시간)로 복원
 | 타입 | 역할 | 왜 필요한가? | 예시 |
 |-----|------|-------------|------|
 | **A** | 도메인 → IPv4 | 기본 IP 매핑 | `google.com → 142.250.217.78` |
-| **AAAA** | 도메인 → IPv6 | IPv4 주소 고갈 대응 | `google.com → 2404:6800:...` |
+| **AAAA** | 도메인 → IPv6 | IPv4 주소 고갈 대응 | `google.com → 2404:6800:4004:80a::200e` |
 | **CNAME** | 도메인 → 도메인 | 별명 (서브도메인 관리) | `www.google.com → google.com` |
 | **MX** | 메일 서버 지정 | 이메일 수신 처리 | `google.com → smtp.google.com` |
 | **NS** | 네임서버 지정 | 도메인 관리 위임 | `google.com → ns1.google.com` |

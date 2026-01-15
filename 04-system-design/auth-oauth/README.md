@@ -73,7 +73,7 @@ ABAC (Attribute-Based): 속성 기반 (소유자, 부서)
 [클라이언트가 상태를 가짐]
 
 1. 로그인 → 서버가 JWT 생성 (서명 포함)
-2. JWT = {userId: 123, exp: ...} + 서명
+2. JWT = {userId: 123, exp: 1735689599} + 서명  (exp = Unix timestamp)
 3. 클라이언트가 JWT 저장
 4. 이후 요청: 서버가 서명 검증만
 

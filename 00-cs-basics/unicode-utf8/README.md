@@ -96,7 +96,7 @@
 INSERT INTO messages (content) VALUES ('안녕하세요! 🔥👋');
 
 -- MySQL utf8 설정이면?? 에러 발생!
-ERROR 1366: Incorrect string value: '\xF0\x9F\x94\xA5...' for column 'content'
+ERROR 1366: Incorrect string value: '\xF0\x9F\x94\xA5\xF0\x9F\x91\x8B' for column 'content'
 ```
 
 **문제의 원인:**

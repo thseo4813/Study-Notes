@@ -36,6 +36,21 @@
 
 ---
 
+## 1. 🧭 빠른 병목 지도 (증상 → 아키텍처 관점)
+
+아래는 실무에서 자주 겪는 “느림”을 **아키텍처 관점으로 번역**한 것입니다.
+
+| 증상(관찰) | 아키텍처 관점에서의 후보 원인 | 다음에 볼 것 |
+|---|---|---|
+| CPU 사용률이 낮은데 응답이 느림 | I/O 대기, 락 경합, 네트워크 대기, 컨텍스트 스위칭 | I/O 지표, 스레드 덤프, 큐 길이 |
+| CPU 사용률은 높은데 처리량이 안 나옴 | 캐시 미스, 분기 예측 실패, 메모리 대역폭 병목 | 캐시 미스율, IPC, branch-misses |
+| “루프/배열 처리”가 유난히 느림 | 접근 패턴이 지역성에 불리, false sharing | 순차 접근/블로킹, 캐시 라인 정렬 |
+| 멀티코어인데 스케일이 안 됨 | 공유 상태/락, false sharing, NUMA, 병렬화 오버헤드 | 락 프로파일링, NUMA 배치 |
+
+> 핵심은 “CPU가 바빠서 느린지”가 아니라, **CPU가 무엇을 기다리는지**를 구분하는 것입니다.
+
+---
+
 ## 2. 📚 컴퓨터가 프로그램을 실행하는 원리
 
 ### 2.1 왜 컴퓨터는 이렇게 설계되었을까?
@@ -94,18 +109,35 @@
 
 #### 3.1.1 산술 논리 장치 (ALU - Arithmetic Logic Unit)
 ```python
-# ALU의 기본 연산 예시 (개념적)
 class ALU:
     def execute(self, operation, operand1, operand2):
-        if operation == "ADD":
+        # Conceptual ALU operations (not CPU-accurate).
+        op = operation.upper()
+
+        if op == "ADD":
             return operand1 + operand2
-        elif operation == "SUB":
+        if op == "SUB":
             return operand1 - operand2
-        elif operation == "AND":
+        if op == "MUL":
+            return operand1 * operand2
+        if op == "DIV":
+            if operand2 == 0:
+                raise ZeroDivisionError("DIV by zero")
+            return operand1 // operand2
+
+        if op == "AND":
             return operand1 & operand2
-        elif operation == "OR":
+        if op == "OR":
             return operand1 | operand2
-        # ... 기타 연산들
+        if op == "XOR":
+            return operand1 ^ operand2
+
+        if op == "SHL":
+            return operand1 << operand2
+        if op == "SHR":
+            return operand1 >> operand2
+
+        raise ValueError(f"Unsupported operation: {operation}")
 ```
 
 #### 3.1.2 제어 장치 (Control Unit)

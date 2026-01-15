@@ -65,7 +65,8 @@ t2.micro → t2.small → t2.medium → c5.large → c5.2xlarge
 -- ❌ 단일 데이터베이스로 모든 요청 처리
 -- 읽기/쓰기 모두 한 곳으로 집중
 SELECT * FROM users WHERE id = 123;  -- 느림
-INSERT INTO orders VALUES (...);     -- 더 느림
+INSERT INTO orders (id, user_id, total_amount, created_at)
+VALUES (98765, 123, 19900, NOW());  -- 더 느림
 ```
 
 ```sql
@@ -330,7 +331,7 @@ async def process_order_async(order):
   "user_id": "user_456",
   "message": "Failed to update user profile",
   "error": "ValidationError: Invalid email format",
-  "stack_trace": "..."
+  "stack_trace": "ValidationError: Invalid email format\n  at com.example.user.ProfileValidator.validate(ProfileValidator.java:42)\n  at com.example.user.UserService.updateProfile(UserService.java:128)\n  at com.example.user.UserController.update(UserController.java:57)"
 }
 ```
 

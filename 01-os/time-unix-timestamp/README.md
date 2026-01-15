@@ -110,7 +110,7 @@ Status: 2038-01-19 03:14:07 UTC
 Binary: 01111111 11111111 11111111 11111111  (Max 32-bit Signed Int)
 Value : 2,147,483,647
 
-       [ +1 Second passes... ]
+       [ +1 Second passes ]
 
 Status: 1901-12-13 20:45:52 UTC (CRASH!)
 Binary: 10000000 00000000 00000000 00000000  (Sign bit flips to negative)

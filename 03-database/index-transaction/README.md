@@ -37,9 +37,9 @@ SELECT * FROM users WHERE email = 'kim@example.com';
           [A-C][E-G][I-L][N-O][Q-S][U-Z]
 
 찾는 값: "Kim"
-1. Root: M보다 큼 → 오른쪽
-2. [P,T]: P보다 작음 → 왼쪽
-3. [N-O]: 없음... → [I-L]: 찾음!
+1. Root: M보다 작음 → 왼쪽
+2. [D,H]: H보다 큼 → 오른쪽
+3. [I-L]: 범위(I~L) 안에 K가 포함 → 찾음!
 
 깊이 3 = 3번 비교만으로 찾음
 → O(log n) = ~27번 비교 (1억 개 기준)

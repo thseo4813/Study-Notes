@@ -357,7 +357,13 @@ public class Example {
 ```c
 // 명시적 할당/해제
 int* array = (int*)malloc(10 * sizeof(int));  // 할당
-// 사용...
+// Use the memory (example).
+for (int i = 0; i < 10; i++) {
+    array[i] = i * 10;
+}
+for (int i = 0; i < 10; i++) {
+    printf("%d\n", array[i]);
+}
 free(array);  // 해제 (누락 시 메모리 누수)
 
 // RAII 패턴 (C++)

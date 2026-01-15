@@ -178,7 +178,7 @@ count++ 의 실제 동작 (3단계):
 
 [동작]
 스레드1: lock() → [임계 영역] → unlock()
-스레드2:    lock() [대기...] → [임계 영역] → unlock()
+스레드2:    lock() [대기] → [임계 영역] → unlock()
 
 [코드 예시]
 mutex = Mutex()
@@ -212,8 +212,8 @@ Semaphore: 열쇠 N개 (counting)
 [발생 조건]
 두 스레드가 서로가 가진 자원을 기다림
 
-스레드1: 자원A 획득 → 자원B 기다림...
-스레드2: 자원B 획득 → 자원A 기다림...
+스레드1: 자원A 획득 → 자원B 기다림
+스레드2: 자원B 획득 → 자원A 기다림
 → 영원히 대기 (Deadlock)
 
 [4가지 필요 조건 (Coffman)]
@@ -454,8 +454,17 @@ def deposit_safe(amount):
         balance = current + amount
     # with 블록을 나가면 자동으로 잠금 해제 (Unlock)
 
-# ... (실행 코드는 위와 동일)
-# 결과: 항상 100000 보장
+threads = []
+for _ in range(100):
+    t = threading.Thread(target=deposit_safe, args=(1000,))
+    threads.append(t)
+    t.start()
+
+for t in threads:
+    t.join()
+
+# Result: always 100000
+print(f"Final Balance: {balance}")
 
 ```
 
@@ -788,7 +797,7 @@ FD 테이블:
 │ 3  │ /var/log/app.log        │
 │ 4  │ TCP Socket (클라이언트1) │ ← 소켓도 FD!
 │ 5  │ TCP Socket (클라이언트2) │
-│... │ ...                      │
+│ 6  │ TCP Socket (클라이언트3) │
 └────┴──────────────────────────┘
 ```
 
@@ -832,10 +841,11 @@ fs.file-max = 2097152
 ```
 Blocking I/O + 스레드 모델:
 
-클라이언트 1 → 스레드 1 → recv() 대기중...
-클라이언트 2 → 스레드 2 → recv() 대기중...
-...
-클라이언트 10000 → 스레드 10000 → recv() 대기중...
+클라이언트 1 → 스레드 1 → recv() 대기중
+클라이언트 2 → 스레드 2 → recv() 대기중
+클라이언트 3 → 스레드 3 → recv() 대기중
+클라이언트 4 → 스레드 4 → recv() 대기중
+클라이언트 5 → 스레드 5 → recv() 대기중
 
 ❌ 10,000 스레드 = 10GB 메모리 (스레드당 1MB 스택)
 ❌ Context Switching 폭발
@@ -852,8 +862,9 @@ Event Loop 모델 (epoll/kqueue):
              ┌─────────────────────────┐
 클라이언트1 ─┤                         │
 클라이언트2 ─┤   이벤트 루프 (1개)     │
-...         ─┤   10,000개 소켓 감시    │
-클라이언트N ─┤   데이터 온 것만 처리   │
+클라이언트3 ─┤   수천~수만 소켓 감시   │
+클라이언트4 ─┤   데이터 온 것만 처리   │
+클라이언트5 ─┤                         │
              └─────────────────────────┘
 
 ✅ 1개 스레드로 10,000개 연결
