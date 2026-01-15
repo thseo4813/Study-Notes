@@ -29,12 +29,14 @@ SELECT * FROM users WHERE email = 'kim@example.com';
 ### 1.2 B-Tree 인덱스의 원리
 
 ```
-[B-Tree 구조]
-                    [M]
-                   /   \
-              [D,H]     [P,T]
-             /  |  \    /  |  \
-          [A-C][E-G][I-L][N-O][Q-S][U-Z]
+[B-Tree Structure]
+                        [M]
+                       /   \
+             ┌─────────┘   └─────────┐
+          [D, H]                   [P, T]
+         /  │  \                  /  │  \
+    ┌───┘   │   └───┐        ┌───┘   │   └───┐
+ [A-C]    [E-G]   [I-L]    [N-O]   [Q-S]   [U-Z]
 
 찾는 값: "Kim"
 1. Root: M보다 작음 → 왼쪽

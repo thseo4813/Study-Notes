@@ -18,27 +18,31 @@
 ### 1.1 단일 서버의 한계
 
 ```
-[단일 서버 구조]
-모든 요청 → 서버 1대
-
-문제점:
-1. 용량 한계: 서버 1대가 처리할 수 있는 요청 수 제한
-2. 단일 장애점: 서버 다운 = 서비스 전체 중단
-3. 업그레이드 어려움: 스케일 업만 가능 (더 비싼 서버)
+[Single Server Architecture]
+      ┌──────────────────┐
+      │      Client      │
+      └────────┬─────────┘
+               │
+               ▼
+      ┌──────────────────┐
+      │   Single Server  │
+      │  (Capacity: 100) │
+      └──────────────────┘
 ```
 
 ### 1.2 로드 밸런싱의 해결책
 
 ```
-[로드 밸런싱 구조]
-                    ┌─→ 서버 1
-요청 → 로드밸런서 ─┼─→ 서버 2
-                    └─→ 서버 3
-
-해결되는 문제:
-1. 확장성: 서버 추가로 용량 증가 (스케일 아웃)
-2. 가용성: 서버 1대 죽어도 나머지가 처리
-3. 유연성: 서버 무중단 교체 가능
+[Load Balancing Architecture]
+                          ┌─────────────┐
+                     ┌───►│  Server 1   │
+      ┌──────────┐   │    └─────────────┘
+      │    LB    ├───┼───►┌─────────────┐
+      └──────────┘   │    │  Server 2   │
+                     │    └─────────────┘
+                     └───►┌─────────────┐
+                          │  Server 3   │
+                          └─────────────┘
 ```
 
 ### 1.3 로드 밸런서의 핵심 역할
@@ -77,15 +81,20 @@ OSI 7계층(Application)에서 결정
 ### 2.2 동작 방식 비교
 
 ```
-[L4 동작 방식]
+[L4 Load Balancing Flow]
 
-Client → L4 LB → Server
-         │
-         └─ 패킷 헤더만 봄:
-            - Source IP: 192.168.1.100
-            - Dest IP: 10.0.0.1
-            - Dest Port: 80
-            → 서버 선택 후 패킷 그대로 전달
+      Client (192.168.1.100)
+             │
+             ▼
+      ┌──────────────────┐
+      │   L4 LB          │
+      │ (Pass-through)   │  ▶ Packet Header Inspection Only
+      └────────┬─────────┘    Source IP: 192.168.1.100
+               │              Dest IP: 10.0.0.1
+               ▼              Dest Port: 80
+      ┌──────────────────┐
+      │     Server       │
+      └──────────────────┘
 
 특징:
 - 매우 빠름 (패킷 내용 분석 안 함)
@@ -93,17 +102,20 @@ Client → L4 LB → Server
 - SSL/TLS 암호화된 내용 볼 수 없음
 
 
-[L7 동작 방식]
+[L7 Load Balancing Flow]
 
-Client → L7 LB → Server
+      Client
          │
-         ├─ TCP 연결 종료
-         ├─ HTTP 요청 파싱:
-         │  - GET /api/users HTTP/1.1
-         │  - Host: api.example.com
-         │  - Cookie: session=abc123
-         │
-         └─ 새 TCP 연결로 서버에 전달
+         ▼ (TCP Connection 1)
+  ┌──────────────────┐
+  │      L7 LB       │  ▶ Terminates TCP Connection
+  │ (Full Proxy)     │  ▶ Decrypts SSL
+  └────────┬─────────┘  ▶ Parses HTTP Request (Header, URL, Cookie)
+           │
+           ▼ (TCP Connection 2)
+  ┌──────────────────┐
+  │     Server       │
+  └──────────────────┘
 
 특징:
 - 느림 (패킷 복호화 + 파싱)
@@ -195,23 +207,23 @@ UDP 기반 실시간 게임
 ### 3.3 2-Tier 아키텍처 (현대적 표준)
 
 ```
-[권장 아키텍처]
+[Recommended 2-Tier Architecture]
 
-인터넷 → L4 LB → L7 LB → 서버
-
-L4 역할:
-- 입구에서 대량 트래픽 분산
-- DDoS 방어 첫 번째 라인
-- 빠른 헬스 체크
-
-L7 역할:
-- 내부에서 지능적 라우팅
-- SSL 종료
-- 세션 관리
-
-[실제 구성 예]
-AWS: NLB(L4) → ALB(L7) → EC2
-GCP: TCP LB(L4) → HTTP LB(L7) → GCE
+      Internet
+         │
+         ▼
+  ┌──────────────────┐
+  │      L4 LB       │  ▶ High Throughput / DDoS Protection
+  └────────┬─────────┘
+           │
+           ▼
+  ┌──────────────────┐
+  │      L7 LB       │  ▶ Smart Routing / SSL Termination
+  └────────┬─────────┘
+           │
+    ┌──────┴──────┐
+    ▼             ▼
+ Server A      Server B
 ```
 
 ---
@@ -380,18 +392,26 @@ upstream backend {
 #### 방법 2: 세션 공유 저장소
 
 ```
-[Redis/Memcached로 세션 공유]
+[Session Sharing Architecture]
 
-요청 → 서버 1 → 세션을 Redis에 저장
-요청 → 서버 2 → Redis에서 세션 조회 → OK!
-
-장점:
-- 어느 서버로 가도 세션 유지
-- 서버 장애 시에도 세션 유지
-
-단점:
-- Redis 의존성 추가
-- 네트워크 지연
+      Client 1        Client 2
+         │               │
+         ▼               ▼
+  ┌─────────────────────────────┐
+  │        Load Balancer        │
+  └──────────────┬──────────────┘
+                 │
+      ┌──────────┴──────────┐
+      │                     │
+┌─────▼─────┐         ┌─────▼─────┐
+│ Web Svr 1 │         │ Web Svr 2 │
+└─────┬─────┘         └─────┬─────┘
+      │                     │
+      └──────────┬──────────┘
+                 ▼
+        ┌─────────────────┐
+        │  Redis Session  │
+        └─────────────────┘
 ```
 
 #### 방법 3: Stateless 설계 (JWT)

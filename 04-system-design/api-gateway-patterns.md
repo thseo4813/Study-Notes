@@ -263,8 +263,9 @@ upstream backend {
 **Stateless 서버 + Redis**가 정답이다.
 
 ```
+[External Shared Session]
          ┌──────────────────┐
-         │   Redis Cluster  │  ← 세션 데이터 저장
+         │   Redis Cluster  │  ← Session Store
          └────────┬─────────┘
                   │
     ┌─────────────┼─────────────┐
@@ -272,13 +273,14 @@ upstream backend {
 ┌───┴───┐    ┌────┴───┐    ┌───┴───┐
 │Server │    │ Server │    │Server │
 │   A   │    │   B    │    │   C   │
-│(무상태)│    │(무상태) │    │(무상태)│
+│(State-│    │(State- │    │(State-│
+│ less) │    │  less) │    │ less) │
 └───────┘    └────────┘    └───────┘
-    ↑             ↑             ↑
+    ▲             ▲             ▲
     └─────────────┼─────────────┘
                   │
            ┌──────┴──────┐
-           │ LB (Round   │  ← 아무 서버로 보내도 OK
+           │ LB (Round   │  ← Any server is fine
            │    Robin)   │
            └─────────────┘
 ```
@@ -310,11 +312,12 @@ L4 LB는 "연결" 단위로 분산 → 단일 TCP 연결에 요청이 몰리면 
 ### ✅ 해결책: gRPC-aware L7 LB
 
 ```
-gRPC Client ─── 요청1 ───> L7 LB ───> Server A
-            ─── 요청2 ───>       ───> Server B
-            ─── 요청3 ───>       ───> Server C
+[Client-side Load Balancing]
+gRPC Client ─── Request 1 ───> Server A
+            ─── Request 2 ───> Server B
+            ─── Request 3 ───> Server C
 
-L7 LB가 HTTP/2 스트림을 이해하고 "요청" 단위로 분산
+(Client knows all server addresses via Service Discovery)
 ```
 
 **사용 가능한 L7 LB:**

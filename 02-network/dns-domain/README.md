@@ -79,14 +79,14 @@ DNS: "google.com은 지금 142.250.217.78야"
 ```
 [DNS 계층 구조]
 
-                    . (Root)
-                      │
-       ┌──────────────┼──────────────┐
-       │              │              │
-     .com           .org           .kr
-       │              │              │
-   ┌───┴───┐      ┌───┴───┐      ┌───┴───┐
- google  amazon  wikipedia    naver  daum
+                          . (Root)
+                              │
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+        .com                .org                .kr  (TLD)
+          │                   │                   │
+      ┌───┴───┐           ┌───┴───┐           ┌───┴───┐
+    google  amazon     wikipedia  ...       naver   daum  (Authoritative)
 
 [왜 이런 구조인가?]
 

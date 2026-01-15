@@ -141,14 +141,18 @@ graph LR
 
 **서버 다중화:**
 ```text
-[웹 서버 다중화]
-┌─────────────────┐    ┌─────────────────┐
-│   Web Server 1  │    │   Web Server 2  │
-│   (Active)      │    │   (Standby)     │
-└─────────────────┘    └─────────────────┘
-         │                       │
-         └───────── Load ─────────┘
-                 Balancer
+[Web Server Redundancy]
+      ┌─────────────────────────┐
+      │      Load Balancer      │
+      │    (Public IP: 1.2.3.4) │
+      └────────────┬────────────┘
+                   │
+          ┌────────┴────────┐
+          │                 │
+    ┌─────▼─────┐     ┌─────▼─────┐
+    │ Web Svr 1 │     │ Web Svr 2 │
+    │ (Active)  │     │ (Standby) │
+    └───────────┘     └───────────┘
 ```
 
 **데이터베이스 다중화:**
@@ -229,11 +233,22 @@ graph LR
 
 **다중 레벨 캐싱:**
 ```text
-[캐싱 피라미드]
-   ┌─ CDN (정적 콘텐츠)
-  ┌─┴─ Application Cache (Redis)
- ┌─┴── Database Cache (InnoDB Buffer Pool)
-└──── Database (Disk)
+[Caching Pyramid]
+            ┌───────────────────┐
+            │        CDN        │ (Global Edge)
+            └─────────┬─────────┘
+                      │
+            ┌─────────▼─────────┐
+            │    Redis/Memcached│ (App Cache)
+            └─────────┬─────────┘
+                      │
+            ┌─────────▼─────────┐
+            │    Local Cache    │ (In-Memory)
+            └─────────┬─────────┘
+                      │
+            ┌─────────▼─────────┐
+            │     Database      │ (Disk Storage)
+            └───────────────────┘
 ```
 
 **캐시 전략:**
@@ -554,17 +569,31 @@ def retry_with_backoff(func, max_retries=3):
 **서킷 브레이커 = 전기 차단기처럼 동작**
 
 ```
-┌─────────┐   실패율 50% 초과   ┌─────────┐
-│ CLOSED  │ ─────────────────> │  OPEN   │
-│ (정상)  │                    │ (차단)  │
-└────┬────┘                    └────┬────┘
-     │                              │
-     │ 성공                  30초 후 │
-     │                              ▼
-     │                        ┌──────────┐
-     └─────────────────────── │HALF-OPEN │
-                              │ (테스트) │
-                              └──────────┘
+[Circuit Breaker State Machine]
+
+       (Failure Rate < Threshold)
+           ┌───────────┐
+      ┌───►│  CLOSED   │◄──────┐
+      │    │ (Normal)  │       │
+      │    └─────┬─────┘       │ (Success)
+      │          │             │
+ (Success)       │(Failure > Threshold)
+      │          ▼             │
+      │    ┌───────────┐       │
+      │    │   OPEN    │       │
+      │    │(Rejected) │       │
+      │    └─────┬─────┘       │
+      │          │             │
+      │          │(Timeout)    │
+      │          ▼             │
+      │    ┌───────────┐       │
+      └─── │ HALF-OPEN │───────┘
+           │ (Testing) │
+           └───────────┘
+           (Failure)
+               │
+               ▼
+             OPEN
 ```
 
 | 상태 | 동작 |
