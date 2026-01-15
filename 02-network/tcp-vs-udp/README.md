@@ -222,7 +222,7 @@ FPS 게임(Overwatch, Valorant 등)은 UDP를 사용하되, **중요한 패킷(�
 
 ---
 
-## 10. 자가 점검 질문
+## 10. 📝 자가 점검 질문
 
 1. **TCP 3-Way Handshake의 세 단계는?**
    → SYN → SYN+ACK → ACK.

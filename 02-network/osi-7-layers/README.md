@@ -472,7 +472,21 @@ graph LR
 
 ---
 
-## 6. 자가 점검 질문
+## 7. 🎯 1분 요약: 계층별 핵심
+
+| 계층 | 이름 | 해결 문제 | 프로토콜/장비 | 진단 도구 |
+|-----|------|----------|--------------|----------|
+| L7 | Application | 사용자 서비스 | HTTP, DNS, SMTP | curl, browser |
+| L6 | Presentation | 데이터 형식 | SSL/TLS, JPEG | openssl |
+| L5 | Session | 연결 관리 | NetBIOS, RPC | - |
+| L4 | Transport | 신뢰성, 포트 | TCP, UDP | telnet, netstat |
+| L3 | Network | 라우팅 | IP, ICMP | ping, traceroute |
+| L2 | Data Link | 로컬 전달 | Ethernet, ARP | arp, tcpdump |
+| L1 | Physical | 신호 전송 | 케이블, WiFi | ethtool |
+
+---
+
+## 8. 📝 자가 점검 질문
 
 ### 원리 이해
 
@@ -495,21 +509,3 @@ graph LR
 
 6. **네트워크 문제를 어느 계층부터 확인해야 하는가?**
    → 아래에서 위로. L1(케이블) → L2(ARP) → L3(ping) → L4(telnet) → L7(curl).
-
----
-
-## 7. 계층별 요약표
-
-| 계층 | 이름 | 해결 문제 | 프로토콜/장비 | 진단 도구 |
-|-----|------|----------|--------------|----------|
-| L7 | Application | 사용자 서비스 | HTTP, DNS, SMTP | curl, browser |
-| L6 | Presentation | 데이터 형식 | SSL/TLS, JPEG | openssl |
-| L5 | Session | 연결 관리 | NetBIOS, RPC | - |
-| L4 | Transport | 신뢰성, 포트 | TCP, UDP | telnet, netstat |
-| L3 | Network | 라우팅 | IP, ICMP | ping, traceroute |
-| L2 | Data Link | 로컬 전달 | Ethernet, ARP | arp, tcpdump |
-| L1 | Physical | 신호 전송 | 케이블, WiFi | ethtool |
-
----
-
-**💡 핵심:** OSI 7계층을 암기하지 말고, **각 계층이 어떤 문제를 해결하는지** 이해하라. 문제가 생기면 **아래에서 위로** 순차적으로 확인하면 반드시 원인을 찾을 수 있다.

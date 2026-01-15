@@ -384,7 +384,7 @@ observer.observe({ type: 'navigation', buffered: true });
 
 ---
 
-## 10. 자가 점검 질문
+## 10. 📝 자가 점검 질문
 
 1. **HTTP/3가 해결하고자 하는 TCP의 가장 큰 문제점은?**
    → Head-of-Line (HOL) Blocking.

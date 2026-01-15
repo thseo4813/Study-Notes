@@ -6,166 +6,154 @@
 
 ## 0. 핵심 질문으로 시작하기
 
-1. **인덱스를 많이 만들면 왜 쓰기 성능이 떨어지는가?** → 데이터 변경 시마다 B-Tree의 정렬을 유지하기 위한 재구성 비용이 발생하므로
+1. **인덱스를 많이 만들면 왜 쓰기 성능이 떨어지는가?** → 데이터 변경 시마다 B-Tree 재정렬 비용 발생
 2. **트랜잭션의 ACID 속성은 무엇인가?** → 원자성(A), 일관성(C), 격리성(I), 지속성(D)
-3. **데드락(Deadlock)은 왜 발생하며 어떻게 해결하는가?** → 두 트랜잭션이 서로의 자원을 가진 채 무한 대기할 때 발생. 잠금 순서를 통일하거나 타임아웃으로 해결
-4. **격리 수준(Isolation Level)이 높을수록 좋은가?** → 데이터 정확성은 높아지지만 동시 처리량이 줄어들어 성능이 저하되므로 트레이드오프가 필요함
+3. **데드락(Deadlock)은 왜 발생하며 어떻게 해결하는가?** → 상호 자원 점유로 인한 무한 대기. 순서 통일이나 타임아웃으로 해결
+4. **격리 수준(Isolation Level)이 높을수록 좋은가?** → 정합성은 올라가지만 동시성이 떨어져 성능 저하 (Trade-off)
 
 ---
 
-## 1. 💥 실제로 겪어본 문제들 (Problem Context)
+## 1. 개념 정의: 왜 필요한가? (Why)
 
-### 배달의민족, 쿠팡에서 흔히 마주치는 상황들:
+### 1.1 데이터베이스의 두 가지 숙명
+백엔드 개발자가 DB를 다룰 때 가장 많이 마주치는 두 가지 문제는 **"너무 느리다(성능)"**와 **"데이터가 깨졌다(정합성)"**입니다.
 
-**🐌 느린 검색 (인덱스 없음):**
-- "서울 맛집 검색"이 30초 걸림
-- "특정 시간대 주문 조회"가 1분 이상 소요
+1. **성능 문제 (Slow Query):** 
+   - 데이터가 1억 건이 넘어가면 단순 `SELECT`도 몇 초~몇 분이 걸립니다.
+   - **해결책:** 인덱스(Index)를 통해 탐색 범위를 획기적으로 줄입니다.
+2. **정합성 문제 (Data Integrity):** 
+   - 계좌 이체 도중 서버가 죽으면 돈이 증발할 수 있습니다.
+   - **해결책:** 트랜잭션(Transaction)을 통해 작업의 완전성을 보장합니다.
 
-**💸 돈 관련 오류 (트랜잭션 없음):**
-- 계좌 이체 중간에 실패해서 돈이 증발
-- 포인트 차감만 되고 상품 구매는 실패
-- 쿠폰 발급 중복으로 재고 초과
+> [!NOTE]
+> **핵심 통찰:** 인덱스는 **"책의 목차"**와 같아서 읽기를 빠르게 하지만 쓰기를 느리게 합니다. 트랜잭션은 **"안전 장치"**와 같아서 데이터를 보호하지만 성능(동시성)을 희생할 수 있습니다.
 
 ---
 
-## 2. 🔍 인덱스: 데이터 검색의 핵심
+## 2. 원리/구조: 어떻게 동작하는가? (How)
 
-### 2.1 인덱스가 왜 빠른가? (B-Tree의 원리)
+### 2.1 인덱스의 구조 (B-Tree)
 
-**인덱스가 없으면? (Full Table Scan)**
-```sql
-SELECT * FROM users WHERE email = 'kim@example.com';
--- 1억 개 행을 처음부터 끝까지 확인 → O(n)
-```
+대부분의 RDBMS는 B-Tree(Balanced Tree) 구조를 사용합니다.
 
-**B-Tree 인덱스 사용 시:**
 ```mermaid
 graph TD
     subgraph B_Tree [B-Tree Structure]
-        Root((M))
+        Root((Root))
         
-        Node1[D, H]
-        Node2[P, T]
+        Node1[Key: 10, 20]
+        Node2[Key: 30, 40]
         
-        Leaf1[A-C]
-        Leaf2[E-G]
-        Leaf3[I-L]
-        Leaf4[N-O]
-        Leaf5[Q-S]
-        Leaf6[U-Z]
+        Leaf1[Data: 1..9]
+        Leaf2[Data: 11..19]
+        Leaf3[Data: 21..29]
+        Leaf4[Data: 31..39]
         
         Root --> Node1
         Root --> Node2
         
         Node1 --> Leaf1
         Node1 --> Leaf2
-        Node1 --> Leaf3
-        
+        Node2 --> Leaf3
         Node2 --> Leaf4
-        Node2 --> Leaf5
-        Node2 --> Leaf6
     end
     
     style Root fill:#fff9c4,stroke:#fbc02d
-    style Node1 fill:#e1bee7,stroke:#8e24aa
-    style Node2 fill:#e1bee7,stroke:#8e24aa
-    style Leaf3 fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+    style Leaf1 fill:#c8e6c9,stroke:#2e7d32
 ```
-- **탐색:** 루트에서 리프 노드까지 `O(log n)`만에 이동
-- **범위 검색:** 리프 노드끼리 연결되어 있어 `BETWEEN` 검색에 최적화
 
-### 2.2 인덱스의 비용 (Trade-off)
+- **동작 원리:** 루트에서 리프 노드까지 `O(log N)`의 시간 복잡도로 데이터를 찾습니다. Full Table Scan `O(N)`과 비교하면 천지차이입니다.
+- **트레이드오프:** 데이터를 `INSERT`, `UPDATE`, `DELETE` 할 때마다 트리의 균형을 맞추기 위해 노드 분할(Split)과 병합이 일어납니다. 이것이 쓰기 성능 저하의 원인입니다.
 
-| 작업 | 영향 | 이유 |
-|---|---|---|
-| **읽기 (SELECT)** | 🚀 빨라짐 | 탐색 범위가 획기적으로 줄어듦 |
-| **쓰기 (INSERT/UPDATE)** | 🐢 느려짐 | 데이터 변경 시마다 B-Tree 재정렬(페이지 분할 등) 필요 |
-| **저장 공간** | 📉 감소 | 인덱스 자체도 디스크 공간을 차지함 (약 10~30% 추가) |
+### 2.2 트랜잭션의 4가지 성질 (ACID)
 
-### 2.3 실전 인덱스 전략
+| 성질 | 의미 | 예시 |
+|:---:|---|---|
+| **Atomicity (원자성)** | All or Nothing | 이체 중 실패하면 송금 전으로 롤백 |
+| **Consistency (일관성)** | 규칙 준수 | 잔액은 0보다 작을 수 없다는 제약조건 유지 |
+| **Isolation (격리성)** | 간섭 없음 | 내가 조회 중일 때 남이 수정해도 영향받지 않음 |
+| **Durability (지속성)** | 영구 저장 | 커밋 완료 메시지 후엔 전원이 꺼져도 데이터 보존 |
 
-**실수 1: 모든 컬럼에 인덱스 생성**
-→ 쓰기 성능이 급격히 저하됨. WHERE, JOIN, ORDER BY에 자주 쓰이는 컬럼만 선택적으로 생성.
+### 2.3 격리 수준 (Isolation Level)과 동시성
 
-**실수 2: 함수 사용으로 인덱스 무효화**
+```mermaid
+flowchart LR
+    Low[Read Uncommitted] --> Middle[Read Committed]
+    Middle --> High[Repeatable Read]
+    High --> Highest[Serializable]
+    
+    subgraph TradeOff
+    direction TB
+    P1[성능/동시성 높음] --- P2[데이터 정합성 높음]
+    end
+```
+
+- **Read Committed:** 커밋된 데이터만 읽음. (Oracle, SQL Server 기본)
+- **Repeatable Read:** 트랜잭션 내내 같은 데이터를 읽음. (MySQL InnoDB 기본)
+
+---
+
+## 3. 실전/구현: 코드로 보는 예시 (What)
+
+### 3.1 인덱스 적용과 흔한 실수 (SQL)
+
 ```sql
--- ❌ 인덱스 사용 불가 (컬럼 가공)
-SELECT * FROM users WHERE UPPER(name) = 'KIM';
+-- ✅ 올바른 인덱스 사용
+CREATE INDEX idx_user_email ON users(email);
+SELECT * FROM users WHERE email = 'test@example.com'; -- 인덱스 타서 빠름
 
--- ✅ 인덱스 사용 가능
-SELECT * FROM users WHERE name = 'KIM'; -- (DB 설정에 따라 대소문자 구분 확인)
+-- ❌ 인덱스를 못 타는 경우 (Full Scan 발생)
+-- 1. 컬럼을 가공했을 때
+SELECT * FROM users WHERE UPPER(email) = 'TEST@EXAMPLE.COM'; 
+-- 2. 앞부분이 아닌 뒷부분 검색 (Like)
+SELECT * FROM users WHERE email LIKE '%example.com';
+-- 3. 부정 연산자 사용
+SELECT * FROM users WHERE email != 'test@example.com';
 ```
 
-**실수 3: 복합 인덱스 순서 오류**
-`CREATE INDEX idx_a_b ON table(a, b)` 인 경우:
-- `WHERE a = 1 AND b = 2` (O)
-- `WHERE a = 1` (O)
-- `WHERE b = 2` (X) → 선행 컬럼(a) 없이 후행 컬럼(b)만으로는 인덱스를 탈 수 없음 (Full Scan 발생)
+### 3.2 트랜잭션 적용 (Spring Java)
+
+```java
+@Service
+public class TransferService {
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void transfer(Long fromId, Long toId, Long amount) {
+        // 1. 출금
+        Account from = accountRepository.findById(fromId)
+            .orElseThrow(() -> new RuntimeException("계좌 없음"));
+        from.withdraw(amount);
+
+        // 2. 입금
+        Account to = accountRepository.findById(toId)
+            .orElseThrow(() -> new RuntimeException("계좌 없음"));
+        to.deposit(amount);
+        
+        // 예외 발생 시 자동으로 Rollback 됨
+    }
+}
+```
+
+> [!WARNING]
+> **데드락(Deadlock) 주의:** 
+> 트랜잭션 A가 자원 1을 잡고 2를 기다리고, 트랜잭션 B가 자원 2를 잡고 1을 기다리면 영원히 멈춥니다.
+> **해결:** 자원 접근 순서를 항상 동일하게 맞추세요. (예: 항상 ID 오름차순으로 락 획득)
 
 ---
 
-## 3. 🔒 트랜잭션: 데이터 정합성의 수호자
+## 4. 🎯 1분 요약
 
-### 3.1 트랜잭션이 필요한 이유
-
-**[계좌 이체 시나리오]**
-1. A 계좌에서 100원 출금
-2. (서버 크래시!)
-3. B 계좌에 100원 입금 (실행 안 됨)
--> **결과: 100원 증발!**
-
-트랜잭션은 이 과정을 **"모두 성공하거나, 아예 없던 일로 하거나(Rollback)"** 보장한다.
-
-### 3.2 ACID 속성
-
-| 속성 | 의미 | 실제 예시 |
-|---|---|---|
-| **Atomicity (원자성)** | All or Nothing | 이체 도중 실패하면 돈이 빠져나가지 않아야 함 |
-| **Consistency (일관성)** | 규칙 준수 | 잔액은 마이너스가 될 수 없다는 제약조건 유지 |
-| **Isolation (격리성)** | 서로 간섭 없음 | 내가 조회하는 도중에 남이 데이터를 바꿔도 영향받지 않음 |
-| **Durability (지속성)** | 영구 저장 | "송금 완료" 메시지가 떴다면 전원이 꺼져도 기록 보존 |
-
-### 3.3 격리 수준 (Isolation Level)과 문제점
-
-동시성(성능)과 데이터 정확성 사이의 줄타기.
-
-| 수준 | 발생 가능한 문제 | 설명 | 적용 사례 |
-|---|---|---|---|
-| **Read Uncommitted** | Dirty Read | 커밋되지 않은 데이터도 읽음 (Rollback 되면 엉뚱한 값) | 로그 분석, 정확성 덜 중요한 통계 |
-| **Read Committed** | Non-Repeatable Read | 커밋된 데이터만 읽음 (가장 일반적) | **대부분의 웹 서비스 (Oracle, MSSQL, PG 기본)** |
-| **Repeatable Read** | Phantom Read | 트랜잭션 내내 같은 값을 읽음 | **MySQL(InnoDB) 기본**, 정산 시스템 |
-| **Serializable** | - | 완벽한 직렬화 (가장 느림) | 은행 잔고 등 초민감 데이터 |
+1. **인덱스**: `WHERE`, `JOIN`, `ORDER BY` 절에 사용되는 컬럼에 걸어야 하며, 너무 많이 걸면 쓰기 성능이 죽는다.
+2. **복합 인덱스**: 순서가 중요하다. (A, B) 인덱스는 A 없이 B만으로 검색하면 인덱스를 타지 못한다.
+3. **트랜잭션**: ACID를 보장하기 위해 사용하며, 격리 수준(Isolation Level)을 조절해 성능과 정합성의 균형을 맞춰야 한다.
 
 ---
 
-## 4. 인덱스와 트랜잭션의 상호작용 (Locking)
+## 5. 📝 자가 점검 질문
 
-DB는 데이터 무결성을 위해 **잠금(Lock)**을 사용하며, 이는 인덱스와 밀접한 관련이 있다.
-
-- **인덱스가 있으면:** 해당 **행(Row)**만 잠금 (Record Lock)
-- **인덱스가 없으면:** **테이블 전체**를 잠금 (Table Lock) → 동시성 대폭 하락!
-
-> **Pro Tip:** `UPDATE`나 `DELETE` 시 `WHERE` 절에 인덱스가 걸려있지 않으면, DB 전체가 멈출 수도 있다.
-
----
-
-## 5. 🎯 1분 요약: 데이터베이스 성능의 핵심
-
-**데이터베이스 = 인덱스(속도) + 트랜잭션(안정성)**
-
-1. **인덱스**: 책의 목차와 같다. 읽기는 빨라지지만, 쓸 때마다 목차를 수정해야 해서 쓰기는 느려진다. B-Tree 구조를 이해하고 선행 컬럼 규칙을 지켜야 한다.
-2. **트랜잭션**: 작업의 완전성을 보장한다. ACID를 통해 데이터가 깨지는 것을 막는다.
-3. **격리 수준**: 성능과 정합성의 트레이드오프다. 보통 `Read Committed`를 쓰고, 필요시 `Repeatable Read`나 락(`SELECT FOR UPDATE`)을 사용한다.
-
----
-
-## 6. 자가 점검 질문
-
-1. **B-Tree 인덱스에서 데이터가 추가될 때 성능 비용이 발생하는 이유는?**
-   → 리프 노드가 꽉 찼을 때 노드 분할(Split)과 트리 재균형(Rebalancing) 작업이 일어나기 때문.
-2. **"커버링 인덱스(Covering Index)"란 무엇인가?**
-   → 쿼리에 필요한 모든 컬럼이 인덱스에 포함되어 있어, 실제 테이블 데이터 블록을 읽지 않고도 결과를 반환할 수 있는 상태.
-3. **트랜잭션 격리 수준 중 `Phantom Read`란 무엇인가?**
+1. **"커버링 인덱스(Covering Index)"란 무엇이며 왜 성능에 좋은가?**
+   → 쿼리에 필요한 모든 컬럼이 인덱스에 포함되어 있어, 실제 테이블 데이터 블록을 읽지 않고도 결과를 반환할 수 있어 I/O가 획기적으로 줄어든다.
+2. **트랜잭션 격리 수준 중 `Phantom Read`란 무엇인가?**
    → 한 트랜잭션 안에서 같은 조건으로 두 번 조회했을 때, 다른 트랜잭션이 데이터를 삽입/삭제하여 결과 행의 개수가 달라지는 현상.
-4. **데드락을 피하기 위한 애플리케이션 레벨의 전략은?**
-   → 트랜잭션을 최대한 짧게 유지하고, 여러 테이블을 수정할 때 항상 같은 순서로 접근하도록 로직을 통일한다.
+3. **인덱스를 걸었는데도 쿼리가 느리다면 무엇을 확인해야 하는가?**
+   → `EXPLAIN`을 통해 실행 계획을 확인하여 인덱스를 제대로 타고 있는지(Full Table Scan 여부), Cardinality(분별력)가 너무 낮은 컬럼은 아닌지 확인한다.
