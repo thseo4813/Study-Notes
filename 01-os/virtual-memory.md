@@ -32,9 +32,9 @@ CPU는 가상 주소(Virtual Address)만 봅니다. 실제 RAM 어디에 있는�
 
 ```mermaid
 graph LR
-    CPU[CPU] -- "가상 주소 (0x1000)" --> MMU[MMU <br/> (페이지 테이블 조회)]
-    MMU -- "물리 주소 (0x5000)" --> RAM[물리 메모리 (RAM)]
-    MMU -- "없음 (Page Fault)" --> Disk[디스크 (Swap Area)]
+    CPU[CPU] -- "가상 주소 (0x1000)" --> MMU["MMU <br/> (페이지 테이블 조회)"]
+    MMU -- "물리 주소 (0x5000)" --> RAM["물리 메모리 (RAM)"]
+    MMU -- "없음 (Page Fault)" --> Disk["디스크 (Swap Area)"]
 
     style MMU fill:#fff9c4,stroke:#fbc02d
     style RAM fill:#c8e6c9,stroke:#2e7d32
