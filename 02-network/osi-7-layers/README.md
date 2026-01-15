@@ -54,31 +54,28 @@
 
 ### 1.3 계층 간 인터페이스
 
-```
-[계층 간 통신]
+```mermaid
+graph TD
+    subgraph Sender [Sender: Encapsulation]
+        direction TB
+        S7[L7 Data] --> S4[L4 Segment: TCP+Data]
+        S4 --> S3[L3 Packet: IP+TCP+Data]
+        S3 --> S2[L2 Frame: Eth+IP+TCP+Data]
+        S2 --> S1[L1 Bits: 0101...]
+    end
 
-각 계층은 아래 계층의 "서비스"를 사용:
-┌───────────────────────────────────────────────┐
-│  L7 Application: "데이터 보내줘"                │
-│       │ (Data)                                │
-│       ▼                                       │
-│  L4 Transport: "신뢰성 있게 보내줄게"           │
-│       │ (Segment = TCP Header + Data)         │
-│       ▼                                       │
-│  L3 Network: "목적지까지 라우팅할게"            │
-│       │ (Packet = IP Header + Segment)        │
-│       ▼                                       │
-│  L2 Data Link: "다음 노드로 전달할게"           │
-│       │ (Frame = Ethernet Header + Packet)    │
-│       ▼                                       │
-│  L1 Physical: "전기 신호로 보낼게"              │
-│       │ (Bits = 01011100...)                  │
-│       ▼                                       │
-└───────────────────────────────────────────────┘
+    subgraph Receiver [Receiver: Decapsulation]
+        direction BT
+        R1[L1 Bits] --> R2[L2 Frame]
+        R2 --> R3[L3 Packet]
+        R3 --> R4[L4 Segment]
+        R4 --> R7[L7 Data]
+    end
 
-[핵심]
-각 계층은 바로 아래 계층만 알면 됨
-→ 전체 복잡성을 7개의 단순한 문제로 분해
+    S1 -.->|Transmission| R1
+
+    style Sender fill:#e3f2fd,stroke:#1565c0
+    style Receiver fill:#e8f5e9,stroke:#2e7d32
 ```
 
 ---
@@ -87,22 +84,30 @@
 
 ### 2.1 전체 그림
 
-```
-┌───────────────────────────────────────────────────────────────────────┐
-│ L7 Application  │ 사용자와 직접 상호작용 (HTTP, DNS, Telnet)            │
-├───────────────────────────────────────────────────────────────────────┤
-│ L6 Presentation │ 데이터 형식 변환, 암호화, 압축 (JPEG, TLS)            │
-├───────────────────────────────────────────────────────────────────────┤
-│ L5 Session      │ 통신 세션 구성, 관리, 종료 (NetBIOS, RPC)             │
-├───────────────────────────────────────────────────────────────────────┤
-│ L4 Transport    │ 발신지-목적지 간 신뢰성 있는 전송 (TCP, UDP)          │
-├───────────────────────────────────────────────────────────────────────┤
-│ L3 Network      │ 논리적 주소(IP) 지정, 경로 설정 (Router)              │
-├───────────────────────────────────────────────────────────────────────┤
-│ L2 Data Link    │ 물리적 주소(MAC) 지정, 에러 검출 (Switch, Bridge)     │
-├───────────────────────────────────────────────────────────────────────┤
-│ L1 Physical     │ 비트를 전기/광 신호로 변환하여 전송 (Hub, Cable)      │
-└───────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph BT
+    L1[L1 Physical<br/>Bits / Hub, Cable]
+    L2[L2 Data Link<br/>Frames / Switch, Bridge]
+    L3[L3 Network<br/>Packets / Router]
+    L4[L4 Transport<br/>Segments / TCP, UDP]
+    L5[L5 Session<br/>Session Mgmt]
+    L6[L6 Presentation<br/>Encryption, Compression]
+    L7[L7 Application<br/>HTTP, DNS]
+
+    L1 --> L2
+    L2 --> L3
+    L3 --> L4
+    L4 --> L5
+    L5 --> L6
+    L6 --> L7
+
+    style L1 fill:#e0e0e0,stroke:#333
+    style L2 fill:#fff9c4,stroke:#fbc02d
+    style L3 fill:#fff9c4,stroke:#fbc02d
+    style L4 fill:#bbdefb,stroke:#1565c0
+    style L5 fill:#e1bee7,stroke:#8e24aa
+    style L6 fill:#e1bee7,stroke:#8e24aa
+    style L7 fill:#ffcdd2,stroke:#c62828
 ```
 
 ### 2.2 각 계층 상세 설명
@@ -405,19 +410,46 @@ $ tcpdump -i eth0 host slow-server.com
 
 ### 5.2 비교
 
-```
-OSI 모델           TCP/IP 모델
-─────────         ─────────────
-L7 Application  ┐
-L6 Presentation ├─→ Application
-L5 Session      ┘
+```mermaid
+graph LR
+    subgraph OSI [OSI Model]
+        O7[Application]
+        O6[Presentation]
+        O5[Session]
+        O4[Transport]
+        O3[Network]
+        O2[Data Link]
+        O1[Physical]
+        
+        O7 --- O6
+        O6 --- O5
+        O5 --- O4
+        O4 --- O3
+        O3 --- O2
+        O2 --- O1
+    end
 
-L4 Transport    ───→ Transport (TCP/UDP)
+    subgraph TCPIP [TCP/IP Model]
+        T4[Application Layer]
+        T3[Transport Layer]
+        T2[Internet Layer]
+        T1[Network Access Layer]
 
-L3 Network      ───→ Internet (IP)
+        T4 --- T3
+        T3 --- T2
+        T2 --- T1
+    end
 
-L2 Data Link    ┐
-L1 Physical     ┴─→ Network Access
+    O7 -.-> T4
+    O6 -.-> T4
+    O5 -.-> T4
+    O4 -.-> T3
+    O3 -.-> T2
+    O2 -.-> T1
+    O1 -.-> T1
+
+    style OSI fill:#f3e5f5,stroke:#7b1fa2
+    style TCPIP fill:#e0f7fa,stroke:#006064
 ```
 
 ### 5.3 실무에서는?

@@ -71,37 +71,30 @@
 
 ## 2. 메모리 레이아웃: 실제 구조
 
-```
-높은 주소 (0xFFFFFFFF)
-┌─────────────────────────────────────┐
-│          Stack Area                 │
-│  - 지역 변수, 매개변수               │
-│  - 함수 호출 시 생성, 리턴 시 삭제    │
-│  - LIFO (Last In First Out)         │
-│                 ↓                   │
-│          (Downward Growth)          │
-├─────────────────────────────────────┤
-│                                     │
-│         Free Space (여유 공간)       │
-│                                     │
-├─────────────────────────────────────┤
-│          (Upward Growth)            │
-│                 ↑                   │
-│          Heap Area                  │
-│  - 사용자 동적 할당 (malloc, new)    │
-│  - 런타임에 크기 결정                │
-├─────────────────────────────────────┤
-│          BSS Segment                │
-│  - 초기화되지 않은 전역/정적 변수     │
-├─────────────────────────────────────┤
-│          Data Segment               │
-│  - 초기화된 전역/정적 변수           │
-├─────────────────────────────────────┤
-│          Text (Code) Segment        │
-│  - 실행할 프로그램 코드 (명령어)      │
-│  - Read-Only                        │
-└─────────────────────────────────────┘
-낮은 주소 (0x00000000)
+```mermaid
+graph TD
+    subgraph Memory_Layout [메모리 레이아웃]
+        direction BT
+        Text[Text Code Segment<br/>기계어 코드 / Read-Only]
+        Data[Data Segment<br/>초기화된 전역 변수]
+        BSS[BSS Segment<br/>초기화되지 않은 전역 변수]
+        Heap[Heap Area<br/>동적 할당 malloc/new<br/>↑ 위로 성장]
+        Free[Free Space<br/>여유 공간]
+        Stack[Stack Area<br/>지역변수, 매개변수<br/>↓ 아래로 성장]
+        
+        Text --> Data
+        Data --> BSS
+        BSS --> Heap
+        Heap --> Free
+        Free --> Stack
+    end
+    
+    style Stack fill:#ffcdd2,stroke:#c62828,color:black
+    style Free fill:#ffffff,stroke:#bdbdbd,stroke-dasharray: 5 5,color:black
+    style Heap fill:#bbdefb,stroke:#1565c0,color:black
+    style BSS fill:#fff9c4,stroke:#fbc02d,color:black
+    style Data fill:#fff9c4,stroke:#fbc02d,color:black
+    style Text fill:#e1bee7,stroke:#8e24aa,color:black
 ```
 
 ---
@@ -132,23 +125,34 @@ public class MemoryExample {
 
 ### 3.1 시각화
 
-```
-      [Stack Frame]                         [Heap Memory]
-┌───────────────────────┐            ┌─────────────────────────┐
-│ method()              │            │                         │
-├───────────────────────┤            │   Address: 0x1000       │
-│ localNum: 42          │            │  ┌───────────────────┐  │
-│                       │            │  │ User Object       │  │
-│ user: 0x1000  ────────┼───────────►│  │ name: "Kim"       │  │
-│                       │            │  │ age: 25           │  │
-│ numbers: 0x2000 ──────┼─────┐      │  └───────────────────┘  │
-└───────────────────────┘     │      │                         │
-                              │      │   Address: 0x2000       │
-                              │      │  ┌───────────────────┐  │
-                              └─────►│  │ int[] Array       │  │
-                                     │  │ [0, 0, ..., 0]    │  │
-                                     │  └───────────────────┘  │
-                                     └─────────────────────────┘
+```mermaid
+graph LR
+    subgraph Stack_Frame [Stack Frame : method]
+        direction TB
+        localNum[localNum : 42]
+        userPtr[user : 0x1000]
+        numbersPtr[numbers : 0x2000]
+    end
+
+    subgraph Heap_Memory [Heap Memory]
+        direction TB
+        subgraph UserObj [Address: 0x1000]
+            U_Name[name : Kim]
+            U_Age[age : 25]
+        end
+        
+        subgraph ArrayObj [Address: 0x2000]
+            Arr_Data[int array : 0, 0, ...]
+        end
+    end
+
+    userPtr -- "참조 (0x1000)" --> UserObj
+    numbersPtr -- "참조 (0x2000)" --> ArrayObj
+
+    style Stack_Frame fill:#f5f5f5,stroke:#333,stroke-width:2px
+    style Heap_Memory fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style UserObj fill:#ffffff,stroke:#1565c0
+    style ArrayObj fill:#ffffff,stroke:#1565c0
 ```
 
 ---
@@ -296,17 +300,27 @@ public void method() {
 
 ### 4.1 시각적 상세 분석 (The Pointer)
 
-```text
-[ Stack Frame: method() ]             [ Heap Memory ]
-+---------------------+               +--------------------------+
-| age : 30            |               |                          |
-+---------------------+               |  Address: 0x5F3A         |
-| user: 0x5F3A  --------------------> |  [ User Object ]         |
-+---------------------+               |  name: "Gemini"          |
-                                      |  age: 30                 |
-                                      |  email: "g@example.com"  |
-                                      +--------------------------+
+```mermaid
+graph LR
+    subgraph Stack [Stack Frame : method]
+        Age[age : 30]
+        UserRef[user : 0x5F3A]
+    end
 
+    subgraph Heap [Heap Memory]
+        subgraph Obj [Address: 0x5F3A]
+            direction TB
+            OName[name : Gemini]
+            OAge[age : 30]
+            OEmail[email : g@example.com]
+        end
+    end
+
+    UserRef -- "Points to" --> Obj
+
+    style Stack fill:#ffebee,stroke:#c62828
+    style Heap fill:#e3f2fd,stroke:#1565c0
+    style Obj fill:#ffffff,stroke:#1565c0
 ```
 
 ---

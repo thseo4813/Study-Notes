@@ -66,30 +66,31 @@
 - **순차적 실행** → 병렬 처리가 어려움
 - **범용성** → 어떤 프로그램이든 실행 가능
 
-```
-[폰 노이만 아키텍처 구조]
+```mermaid
+graph TD
+    subgraph CPU [Central Processing Unit CPU]
+        CU[Control Unit<br/>제어 장치]
+        ALU[ALU<br/>산술 논리 장치]
+        Reg[Registers<br/>레지스터]
+        
+        CU --- ALU
+        CU --- Reg
+        ALU --- Reg
+    end
 
-      ┌─────────────────────────────────────────┐
-      │       Central Processing Unit (CPU)     │
-      │                                         │
-      │    ┌──────────────┐   ┌────────────┐    │
-      │    │ Control Unit │   │     ALU    │    │
-      │    └──────┬───────┘   └──────┬─────┘    │
-      │           │                  │          │
-      │           └───┐          ┌───┘          │
-      │             ┌─┴──────────┴─┐            │
-      │             │  Registers   │            │
-      │             └──────┬───────┘            │
-      └────────────────────┼────────────────────┘
-                           │
-             ┌─────────────▼─────────────┐
-             │        System Bus         │
-             └──────┬─────────────┬──────┘
-                    │             │
-             ┌──────▼─────┐  ┌────▼───────┐
-             │   Memory   │  │    I/O     │
-             │            │  │   Devices  │
-             └────────────┘  └────────────┘
+    Bus{System Bus<br/>시스템 버스}
+
+    Memory[Memory<br/>주기억장치]
+    IO[I/O Devices<br/>입출력 장치]
+
+    CPU <==> Bus
+    Bus <==> Memory
+    Bus <==> IO
+
+    style CPU fill:#e3f2fd,stroke:#1565c0
+    style Memory fill:#fff3e0,stroke:#ef6c00
+    style IO fill:#f3e5f5,stroke:#7b1fa2
+    style Bus fill:#eeeeee,stroke:#333333
 ```
 
 ### 2.2 하버드 아키텍처 (Harvard Architecture)
@@ -166,17 +167,16 @@ class ALU:
 | **예시** | x86 (Intel, AMD) | ARM, MIPS, RISC-V |
 
 **RISC의 장점:**
-```text
-┌──────────────────────────────────────────────┐
-│            RISC Pipeline Example             │
-├─────────────┬────────────────────────────────┤
-│ Instruction │          Operation             │
-├─────────────┼────────────────────────────────┤
-│ 1. LOAD     │ Mem[R2] -> R1                  │
-│ 2. ADD      │ R1 + R4 -> R3                  │
-│ 3. STORE    │ R3 -> Mem[R5]                  │
-└─────────────┴────────────────────────────────┘
- → 각 명령어가 단순하여 파이프라이닝 효율 극대화
+```mermaid
+gantt
+    title RISC Pipeline Efficiency
+    dateFormat  s
+    axisFormat %s
+    
+    section Pipeline
+    LOAD (Mem->R1)  :done, a1, 0, 1s
+    ADD (R1+R4->R3) :done, a2, after a1, 1s
+    STORE (R3->Mem) :done, a3, after a2, 1s
 ```
 
 ### 3.3 명령어 실행 사이클
@@ -193,19 +193,32 @@ class ALU:
 #### 3.3.2 파이프라이닝 (Pipelining)
 
 **병렬 처리 기법:**
-```text
-[5단계 파이프라인 예시]
+```mermaid
+gantt
+    title 5-Stage Pipeline Execution
+    dateFormat  s
+    axisFormat %s
 
-      Time →   1   2   3   4   5   6   7   8   9
-    ┌───────┐
-    │ Inst 1│  F → D → E → M → W
-    └───────┘      ┌───────┐
-    │ Inst 2│      │ F → D → E → M → W
-    └───────┘      └───────┘   ┌───────┐
-    │ Inst 3│                  │ F → D → E → M → W
-    └───────┘                  └───────┘
+    section Instruction 1
+    Fetch       :a1, 0, 1s
+    Decode      :a2, after a1, 1s
+    Execute     :a3, after a2, 1s
+    Memory      :a4, after a3, 1s
+    Write-back  :a5, after a4, 1s
 
-    * F: Fetch, D: Decode, E: Execute, M: Memory, W: Write-back
+    section Instruction 2
+    Fetch       :b1, after a1, 1s
+    Decode      :b2, after b1, 1s
+    Execute     :b3, after b2, 1s
+    Memory      :b4, after b3, 1s
+    Write-back  :b5, after b4, 1s
+
+    section Instruction 3
+    Fetch       :c1, after b1, 1s
+    Decode      :c2, after c1, 1s
+    Execute     :c3, after c2, 1s
+    Memory      :c4, after c3, 1s
+    Write-back  :c5, after c4, 1s
 ```
 
 **파이프라인 해저드 (Hazards):**
@@ -292,22 +305,29 @@ for (int i = 0; i < 1000; i++) {
 ### 4.3 캐시 일관성 (Cache Coherence)
 
 **멀티코어 시스템에서의 문제:**
-```text
-[캐시 일관성 문제 (Cache Coherence Problem)]
+```mermaid
+sequenceDiagram
+    participant CPU1 as CPU 1
+    participant CPU2 as CPU 2
+    participant RAM as Memory (RAM)
 
-      CPU 1                CPU 2               Memory
-     ┌─────┐              ┌─────┐             ┌──────┐
-     │Cache│              │Cache│             │ RAM  │
-     └──┬──┘              └──┬──┘             └──┬───┘
-        │                    │                   │
-  1. Load X (10)       2. Load X (10)            │ X = 10
-        │                    │                   │
-  3. X = 20 (Update)         │                   │
-     (Dirty)                 │                   │
-        │              4. Read X?                │
-        │               (Still 10!)              │
-        ▼                    ▼                   ▼
-    ❌ Inconsistency: CPU 2 sees old value (10) instead of 20
+    Note over CPU1, CPU2: Initial State: X = 10 in RAM
+
+    CPU1->>RAM: 1. Load X
+    RAM-->>CPU1: X = 10
+    Note left of CPU1: Cache: X=10
+
+    CPU2->>RAM: 2. Load X
+    RAM-->>CPU2: X = 10
+    Note right of CPU2: Cache: X=10
+
+    Note left of CPU1: 3. Update X = 20
+    CPU1->>CPU1: X = 20 (Dirty)
+    
+    CPU2->>CPU2: 4. Read X
+    Note right of CPU2: Still X=10! (Stale Data)
+    
+    Note over CPU1, CPU2: ❌ Inconsistency Problem!
 ```
 
 **해결책:**
@@ -357,20 +377,29 @@ void vector_add(float *a, float *b, float *result, int n) {
 - 인텔 Pentium부터 도입
 
 #### 5.2.2 아웃-오브-오더 실행 (Out-of-Order Execution)
-```text
-[명령어 재배열 (Out-of-Order Execution)]
+```mermaid
+graph TD
+    subgraph Original [Original Sequence (Stall 발생)]
+        O1[1. LOAD R1, addr]
+        O2[2. ADD R2, R3, R4]
+        O3[3. MUL R5, R6, R7]
+        
+        O1 -- "Waiting Memory..." --> O2
+        O2 -- "Blocked by 1?" --> O3
+    end
 
-  Original Sequence (Stall 발생)     Reordered (효율적)
-  ┌─────────────────────────┐      ┌─────────────────────────┐
-  │ 1. LOAD R1, [addr]      │      │ 2. ADD R2, R3, R4       │
-  │    (Waiting Memory...)  │      │    (Execute Immediately)│
-  │                         │  ==> │                         │
-  │ 2. ADD R2, R3, R4       │      │ 3. MUL R5, R6, R7       │
-  │    (Blocked by 1?)      │      │    (Execute Immediately)│
-  │                         │      │                         │
-  │ 3. MUL R5, R6, R7       │      │ 1. LOAD R1, [addr]      │
-  │                         │      │    (Complete later)     │
-  └─────────────────────────┘      └─────────────────────────┘
+    subgraph Reordered [Reordered (효율적)]
+        R2[2. ADD R2, R3, R4]
+        R3[3. MUL R5, R6, R7]
+        R1[1. LOAD R1, addr]
+        
+        R2 -- "Execute Immediately" --> R3
+        R3 -- "Execute Immediately" --> R1
+        R1 -- "Complete later" --> Done((Done))
+    end
+
+    style Original fill:#ffebee,stroke:#c62828
+    style Reordered fill:#e8f5e9,stroke:#2e7d32
 ```
 
 #### 5.2.3 분기 예측 (Branch Prediction)
@@ -433,19 +462,24 @@ void main() {
 ### 6.2 DMA (Direct Memory Access)
 
 **CPU 개입 없이 메모리 ↔ I/O 장치 간 직접 전송:**
-```text
-[DMA 전송 흐름]
+```mermaid
+sequenceDiagram
+    participant CPU
+    participant DMA as DMA Controller
+    participant IO as I/O Device
+    participant Mem as Memory
 
-     1. 명령 설정             2. 직접 전송 (CPU 관여 X)         3. 완료 알림
-  ┌──────────────┐        ┌───────────────────────┐        ┌──────────────┐
-  │      CPU     │───────>│   DMA Controller      │───────>│      CPU     │
-  └──────────────┘        └───────────┬───────────┘        └──────────────┘
-                                      │ ▲
-                                      │ │
-                                      ▼ │
-  ┌──────────────┐        ┌───────────┴───────────┐
-  │  I/O Device  │<══════>│        Memory         │
-  └──────────────┘        └───────────────────────┘
+    CPU->>DMA: 1. 명령 설정 (주소, 크기, 제어)
+    activate DMA
+    Note right of CPU: CPU는 다른 작업 수행 가능
+    
+    DMA->>IO: 2. 데이터 요청
+    IO->>Mem: 직접 전송 (CPU bypass)
+    Mem-->>IO: Ack
+    IO-->>DMA: 전송 완료
+    
+    DMA->>CPU: 3. 완료 인터럽트 (Interrupt)
+    deactivate DMA
 ```
 
 **장점:**

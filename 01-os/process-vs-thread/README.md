@@ -76,76 +76,89 @@
 
 ### 2.1 프로세스의 메모리 (완전 격리)
 
-```
-[프로세스 A]                      [프로세스 B]
-┌──────────────────┐              ┌──────────────────┐
-│    Stack         │              │    Stack         │
-├──────────────────┤              ├──────────────────┤
-│    Heap          │              │    Heap          │
-├──────────────────┤              ├──────────────────┤
-│    Data          │              │    Data          │
-├──────────────────┤              ├──────────────────┤
-│    Code          │              │    Code          │
-└─────────┬────────┘              └─────────┬────────┘
-          │                                 │
-          ▼                                 ▼
-    (독립된 메모리)                   (독립된 메모리)
-    (A ↔ B 접근 불가)                 (A ↔ B 접근 불가)
-    [벽] ───────────────────────────── [벽]
+```mermaid
+graph TB
+    subgraph Process_A [프로세스 A]
+        StackA[Stack]
+        HeapA[Heap]
+        DataA[Data]
+        CodeA[Code]
+    end
 
-[결과]
-- 프로세스 A의 버그가 B에 영향 없음
-- 대신 통신하려면 IPC 사용 (파이프, 소켓 등)
+    subgraph Process_B [프로세스 B]
+        StackB[Stack]
+        HeapB[Heap]
+        DataB[Data]
+        CodeB[Code]
+    end
+
+    Process_A <-->|IPC 파이프/소켓| Process_B
+    Process_A --x|직접 접근 불가| Process_B
+
+    style Process_A fill:#e3f2fd,stroke:#1565c0
+    style Process_B fill:#ffebee,stroke:#c62828
 ```
 
 ### 2.2 스레드의 메모리 (부분 공유)
 
-```
-[Multi-Threaded Process]
-┌───────────────────────────────────────────────────────────┐
-│  Code Segment (Shared)                                    │
-├───────────────────────────────────────────────────────────┤
-│  Data Segment (Shared) - Global Variables                 │
-├───────────────────────────────────────────────────────────┤
-│  Heap Segment (Shared) - Dynamic Allocation (new/malloc)  │
-│                                                           │
-│  [ Thread 1 ]        [ Thread 2 ]        [ Thread 3 ]     │
-│  ┌──────────┐        ┌──────────┐        ┌──────────┐     │
-│  │ Stack    │        │ Stack    │        │ Stack    │     │
-│  ├──────────┤        ├──────────┤        ├──────────┤     │
-│  │ Registers│        │ Registers│        │ Registers│     │
-│  └──────────┘        └──────────┘        └──────────┘     │
-└───────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Multi_Threaded_Process [Multi-Threaded Process]
+        subgraph Shared_Memory [공유 메모리 영역]
+            Code[Code Segment]
+            Data[Data Segment - Global Vars]
+            Heap[Heap Segment - Dynamic Alloc]
+        end
 
-[결과]
-- 스레드 간 통신: 그냥 변수 읽기/쓰기 (빠름!)
-- 문제: 여러 스레드가 동시에 같은 변수 수정 → 충돌!
+        subgraph T1 [Thread 1]
+            Stack1[Stack]
+            Reg1[Registers]
+        end
+
+        subgraph T2 [Thread 2]
+            Stack2[Stack]
+            Reg2[Registers]
+        end
+
+        subgraph T3 [Thread 3]
+            Stack3[Stack]
+            Reg3[Registers]
+        end
+
+        Shared_Memory --- T1
+        Shared_Memory --- T2
+        Shared_Memory --- T3
+    end
+
+    style Shared_Memory fill:#fff9c4,stroke:#fbc02d
+    style T1 fill:#e1bee7,stroke:#8e24aa
+    style T2 fill:#e1bee7,stroke:#8e24aa
+    style T3 fill:#e1bee7,stroke:#8e24aa
 ```
 
 ### 2.3 동시성 문제의 근본 원인
 
-```
-[왜 공유 메모리가 문제인가?]
+```mermaid
+sequenceDiagram
+    participant T1 as Thread 1
+    participant Mem as Memory (count=0)
+    participant T2 as Thread 2
 
-상황: count = 0을 두 스레드가 동시에 count++ 실행
+    Note over T1, T2: 목표: count++ (0 -> 1 -> 2)
 
-count++ 의 실제 동작 (3단계):
-1. READ:  레지스터 = count (메모리에서 읽기)
-2. ADD:   레지스터 = 레지스터 + 1 (계산)
-3. WRITE: count = 레지스터 (메모리에 쓰기)
-
-[정상 실행]
-스레드1: READ(0) → ADD(1) → WRITE(1)
-스레드2:                      READ(1) → ADD(2) → WRITE(2)
-결과: count = 2 ✓
-
-[문제 발생]
-스레드1: READ(0) → ADD(1) → ─────────────→ WRITE(1)
-스레드2:     READ(0) → ADD(1) → WRITE(1)
-결과: count = 1 ✗ (하나가 "씹힘")
-
-[핵심 통찰]
-원자적이지 않은(non-atomic) 연산 + 공유 메모리 = Race Condition
+    T1->>Mem: 1. READ (0)
+    T2->>Mem: 1. READ (0)
+    
+    T1->>T1: 2. ADD (0+1=1)
+    T2->>T2: 2. ADD (0+1=1)
+    
+    T1->>Mem: 3. WRITE (1)
+    Note left of Mem: count = 1
+    
+    T2->>Mem: 3. WRITE (1)
+    Note right of Mem: count = 1 (Overwrite!)
+    
+    Note over T1, T2: ❌ 결과: count=1 (2가 되어야 함)
 ```
 
 ---
@@ -857,26 +870,31 @@ Blocking I/O + 스레드 모델:
 
 #### ✅ 해결: Event Loop (I/O Multiplexing)
 
-```
-Event Loop Model (epoll/kqueue):
+```mermaid
+graph LR
+    subgraph Clients [Clients]
+        C1[Client 1]
+        C2[Client 2]
+        CN[Client N]
+    end
 
-             ┌─────────────────────────────┐
-Client 1 ───►│                             │
-Client 2 ───►│      [ Event Loop ]         │
-Client 3 ───►│   (Single Threaded)         │
-...          │                             │
-Client N ───►│   1. Watch all Sockets      │
-             │   2. Queue Ready Events     │
-             │   3. Process Callback       │
-             └─────────────┬───────────────┘
-                           │
-                           ▼
-                  [ Non-blocking I/O ]
-                  (File, Network, DB)
+    subgraph Server [Single Threaded Server]
+        EL[Event Loop<br/>1. Watch Sockets<br/>2. Queue Events<br/>3. Process Callbacks]
+    end
 
-✅ 1개 스레드로 10,000개 연결
-✅ 메모리 수십 MB
-✅ Context Switching 없음
+    subgraph System [System Kernel]
+        IO[Non-blocking I/O<br/>File, Network, DB]
+    end
+
+    C1 --> EL
+    C2 --> EL
+    CN --> EL
+    
+    EL -- "Async Request" --> IO
+    IO -- "Completion Event" --> EL
+
+    style EL fill:#fff9c4,stroke:#fbc02d
+    style IO fill:#e3f2fd,stroke:#1565c0
 ```
 
 ---
