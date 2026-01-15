@@ -125,57 +125,63 @@
 
 ### 💡 L4 LB는 이렇게 동작
 
-```
-클라이언트 ─── TCP ───> L4 LB ─── TCP ───> 서버 A
-                          │
-                          ├─── TCP ───> 서버 B
-                          │
-                          └─── TCP ───> 서버 C
+```mermaid
+graph LR
+    Client((Client)) 
+    L4[L4 Load Balancer]
+    ServerA[Server A]
+    ServerB[Server B]
+    ServerC[Server C]
 
-특징:
-• 패킷 내용을 보지 않음 (그래서 빠름)
-• IP + 포트만으로 분산 결정
+    Client -- "TCP Connection" --> L4
+    L4 -- "TCP Stream 1" --> ServerA
+    L4 -- "TCP Stream 2" --> ServerB
+    L4 -- "TCP Stream 3" --> ServerC
+
+    style L4 fill:#e3f2fd,stroke:#1565c0
+    style ServerA fill:#f5f5f5,stroke:#333
+    style ServerB fill:#f5f5f5,stroke:#333
+    style ServerC fill:#f5f5f5,stroke:#333
 ```
 
 ---
 
 ### 💡 L7 LB는 이렇게 동작
 
-```
-클라이언트 ─── HTTP ───> L7 LB ─── 분석 후 라우팅
-                           │
-                           │ [분석 대상]
-                           │  • URL: /api/users
-                           │  • Header: Authorization
-                           │  • Cookie: session_id
-                           │
-                           ├─ /api/users  ───> User Service
-                           ├─ /api/orders ───> Order Service
-                           └─ /static/*   ───> CDN
+```mermaid
+graph LR
+    Client((Client)) --> L7[L7 Load Balancer]
+    
+    L7 -- "/api/users" --> User[User Service]
+    L7 -- "/api/orders" --> Order[Order Service]
+    L7 -- "/static/*" --> CDN[CDN]
+
+    style L7 fill:#e8f5e9,stroke:#2e7d32
+    style User fill:#fff9c4,stroke:#fbc02d
+    style Order fill:#fff9c4,stroke:#fbc02d
+    style CDN fill:#e0e0e0,stroke:#616161
 ```
 
 ---
 
 ### 📋 선택 가이드
 
-```
-URL/헤더 기반 라우팅 필요?
-│
-├─ Yes ──────────────────────────────────> L7 LB
-│
-└─ No
-    │
-    └─ SSL Termination 필요?
-        │
-        ├─ Yes ──────────────────────────> L7 LB
-        │
-        └─ No
-            │
-            └─ gRPC 사용?
-                │
-                ├─ Yes ──────────────────> L7 LB (gRPC-aware)
-                │
-                └─ No ───────────────────> L4 LB ⚡
+```mermaid
+flowchart TD
+    Start{URL/헤더 기반<br/>라우팅 필요?}
+    
+    Start -- Yes --> L7[L7 LB]
+    Start -- No --> SSL{SSL Termination<br/>필요?}
+    
+    SSL -- Yes --> L7
+    SSL -- No --> gRPC{gRPC 사용?}
+    
+    gRPC -- Yes --> L7_gRPC[L7 LB<br/>(gRPC-aware)]
+    gRPC -- No --> L4[L4 LB ⚡]
+
+    style L7 fill:#e8f5e9,stroke:#2e7d32
+    style L7_gRPC fill:#e8f5e9,stroke:#2e7d32
+    style L4 fill:#e3f2fd,stroke:#1565c0
 ```
 
 ---
@@ -262,27 +268,30 @@ upstream backend {
 
 **Stateless 서버 + Redis**가 정답이다.
 
-```
-[External Shared Session]
-         ┌──────────────────┐
-         │   Redis Cluster  │  ← Session Store
-         └────────┬─────────┘
-                  │
-    ┌─────────────┼─────────────┐
-    │             │             │
-┌───┴───┐    ┌────┴───┐    ┌───┴───┐
-│Server │    │ Server │    │Server │
-│   A   │    │   B    │    │   C   │
-│(State-│    │(State- │    │(State-│
-│ less) │    │  less) │    │ less) │
-└───────┘    └────────┘    └───────┘
-    ▲             ▲             ▲
-    └─────────────┼─────────────┘
-                  │
-           ┌──────┴──────┐
-           │ LB (Round   │  ← Any server is fine
-           │    Robin)   │
-           └─────────────┘
+```mermaid
+graph BT
+    subgraph Session_Store [External Session Store]
+        Redis[("Redis Cluster")]
+    end
+
+    subgraph App_Servers [Stateless Application Servers]
+        S1[Server A]
+        S2[Server B]
+        S3[Server C]
+    end
+    
+    LB[Load Balancer] --> S1
+    LB --> S2
+    LB --> S3
+    
+    S1 <--> Redis
+    S2 <--> Redis
+    S3 <--> Redis
+
+    style Redis fill:#ffcc80,stroke:#ef6c00
+    style S1 fill:#e3f2fd,stroke:#1565c0
+    style S2 fill:#e3f2fd,stroke:#1565c0
+    style S3 fill:#e3f2fd,stroke:#1565c0
 ```
 
 **장점:**
@@ -373,19 +382,34 @@ L7 LB를 앞단에 두는 대신, **클라이언트(또는 사이드카)가 여�
 
 ### ✅ 해결책: Gateway 클러스터
 
-```
-       DNS Round Robin
-            │
-  ┌─────────┼─────────┐
-  │         │         │
-┌─┴──┐   ┌──┴─┐   ┌──┴─┐
-│ GW │   │ GW │   │ GW │
-│ 1  │   │ 2  │   │ 3  │
-└─┬──┘   └──┬─┘   └──┬─┘
-  │         │        │
-  └─────────┼────────┘
-            │
-       내부 서비스들
+```mermaid
+graph TD
+    DNS((DNS Round Robin))
+    
+    subgraph Gateway_Cluster
+        GW1[Gateway 1]
+        GW2[Gateway 2]
+        GW3[Gateway 3]
+    end
+    
+    subgraph Microservices
+        Svc1[Service A]
+        Svc2[Service B]
+    end
+    
+    DNS --> GW1
+    DNS --> GW2
+    DNS --> GW3
+    
+    GW1 --> Svc1
+    GW1 --> Svc2
+    GW2 --> Svc1
+    GW2 --> Svc2
+    GW3 --> Svc1
+    GW3 --> Svc2
+
+    style DNS fill:#fff9c4,stroke:#fbc02d
+    style Gateway_Cluster fill:#e3f2fd,stroke:#1565c0
 ```
 
 ---

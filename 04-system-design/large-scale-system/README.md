@@ -140,19 +140,21 @@ graph LR
 ### 3.1 다중화(Multiplication)의 원칙
 
 **서버 다중화:**
-```text
-[Web Server Redundancy]
-      ┌─────────────────────────┐
-      │      Load Balancer      │
-      │    (Public IP: 1.2.3.4) │
-      └────────────┬────────────┘
-                   │
-          ┌────────┴────────┐
-          │                 │
-    ┌─────▼─────┐     ┌─────▼─────┐
-    │ Web Svr 1 │     │ Web Svr 2 │
-    │ (Active)  │     │ (Standby) │
-    └───────────┘     └───────────┘
+```mermaid
+graph TD
+    LB[Load Balancer<br/>Public IP: 1.2.3.4]
+    
+    subgraph Web_Servers [Web Server Cluster]
+        S1[Web Svr 1<br/>(Active)]
+        S2[Web Svr 2<br/>(Standby)]
+    end
+    
+    LB --> S1
+    LB -.-> S2
+
+    style LB fill:#e3f2fd,stroke:#1565c0
+    style S1 fill:#c8e6c9,stroke:#2e7d32
+    style S2 fill:#e0e0e0,stroke:#616161,stroke-dasharray: 5 5
 ```
 
 **데이터베이스 다중화:**
@@ -186,14 +188,24 @@ graph LR
 ### 4.2 서비스 분해 전략
 
 **DDD(Domain-Driven Design) 기반 분해:**
-```text
-[이커머스 도메인 분해 예시]
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   User Service  │    │  Product Service│    │  Order Service  │
-│   (회원 관리)   │    │  (상품 관리)    │    │  (주문 처리)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └─────────────────── API Gateway ──────────────────┘
+```mermaid
+graph TD
+    GW[API Gateway]
+    
+    subgraph Services [Microservices]
+        User[User Service]
+        Product[Product Service]
+        Order[Order Service]
+    end
+    
+    GW --> User
+    GW --> Product
+    GW --> Order
+
+    style GW fill:#e3f2fd,stroke:#1565c0
+    style User fill:#fff9c4,stroke:#fbc02d
+    style Product fill:#fff9c4,stroke:#fbc02d
+    style Order fill:#fff9c4,stroke:#fbc02d
 ```
 
 **서비스 간 통신:**
@@ -232,23 +244,21 @@ graph LR
 ### 5.2 캐싱 계층 설계
 
 **다중 레벨 캐싱:**
-```text
-[Caching Pyramid]
-            ┌───────────────────┐
-            │        CDN        │ (Global Edge)
-            └─────────┬─────────┘
-                      │
-            ┌─────────▼─────────┐
-            │    Redis/Memcached│ (App Cache)
-            └─────────┬─────────┘
-                      │
-            ┌─────────▼─────────┐
-            │    Local Cache    │ (In-Memory)
-            └─────────┬─────────┘
-                      │
-            ┌─────────▼─────────┐
-            │     Database      │ (Disk Storage)
-            └───────────────────┘
+```mermaid
+graph BT
+    DB[Database<br/>(Disk Storage)]
+    Local[Local Cache<br/>(In-Memory)]
+    Redis[Redis/Memcached<br/>(App Cache)]
+    CDN[CDN<br/>(Global Edge)]
+    
+    DB --> Local
+    Local --> Redis
+    Redis --> CDN
+
+    style DB fill:#e0e0e0,stroke:#616161
+    style Local fill:#fff9c4,stroke:#fbc02d
+    style Redis fill:#ffcc80,stroke:#ef6c00
+    style CDN fill:#ffab91,stroke:#d84315
 ```
 
 **캐시 전략:**
@@ -398,26 +408,26 @@ async def process_order_async(order):
 
 ### 9.1 Netflix 아키텍처
 
-```text
-[Netflix 마이크로서비스 아키텍처]
-┌─────────────────┐
-│   API Gateway   │  <- Zuul
-│   (Edge Service)|
-└─────────────────┘
-         │
-    ┌────┴────┐
-    │         │
-┌───┴───┐ ┌───┴───┐
-│User   │ │Content│
-│Service│ │Service│
-└───┬───┘ └───┬───┘
-    │         │
-    └────┬────┘
-         │
-    ┌────┴────┐
-    │  Eureka │  <- 서비스 디스커버리
-    │ (Registry)
-    └─────────┘
+```mermaid
+graph TD
+    GW[API Gateway<br/>(Zuul)]
+    
+    subgraph Services
+        User[User Service]
+        Content[Content Service]
+    end
+    
+    Registry[Eureka<br/>(Service Registry)]
+    
+    GW --> User
+    GW --> Content
+    
+    User -.-> Registry
+    Content -.-> Registry
+    GW -.-> Registry
+
+    style GW fill:#e3f2fd,stroke:#1565c0
+    style Registry fill:#fff9c4,stroke:#fbc02d
 ```
 
 ### 9.2 AWS 기반 대규모 아키텍처
@@ -493,13 +503,28 @@ async def process_order_async(order):
 
 클라이언트가 먼저 포기했는데, 서버는 여전히 작업 중인 상황.
 
-```
-Client (3초 타임아웃) ─────> LB (60초 타임아웃) ─────> Server
-   │                              │                      │
-   │ 3초 후 포기                  │ 아직 기다리는 중      │ 30초 후 완료
-   │ 재시도 시작                  │                      │ 응답 → 어디로? ❌
-   ↓                              ↓                      ↓
-  재시도로 부하 증가          리소스 점유 낭비       헛수고
+```mermaid
+sequenceDiagram
+    participant Client
+    participant LB as Load Balancer
+    participant Server
+
+    Note over Client: Timeout: 3s
+    Note over LB: Timeout: 60s
+    Note over Server: Processing...
+
+    Client->>LB: Request
+    LB->>Server: Request
+    
+    Note right of Client: 3s passed...
+    Client--xLB: ❌ Timeout (Give up)
+    Client->>LB: Retry Request (New)
+    
+    Note right of Server: Still processing (1st)...
+    Server-->>LB: Response (1st)
+    LB--xClient: ❌ Client gone (Orphaned)
+    
+    Note right of Server: Server resource wasted!
 ```
 
 #### ✅ 해결: 바깥쪽 → 안쪽으로 타임아웃 증가
@@ -617,21 +642,31 @@ CircuitBreakerConfig config = CircuitBreakerConfig.custom()
 
 #### 💡 개념: 서비스별 리소스 분리
 
-```
-❌ 격벽 없음 (연쇄 장애)
-┌──────────────────────────────────┐
-│      공유 스레드 풀 (100개)       │
-│  Service A: 50개 점유 (느림)     │
-│  Service B: 50개 → 대기! ❌      │
-│  Service C: 0개 → 대기! ❌       │
-└──────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph No_Bulkhead [❌ 격벽 없음]
+        Pool1[공유 스레드 풀 100개]
+        SvcA1[Service A: 50개 점유]
+        SvcB1[Service B: 50개 대기]
+        SvcC1[Service C: 0개 대기]
+        
+        Pool1 --> SvcA1
+        Pool1 --> SvcB1
+        Pool1 --> SvcC1
+        
+        style SvcB1 fill:#ffcdd2
+        style SvcC1 fill:#ffcdd2
+    end
 
-✅ 격벽 적용 (장애 격리)
-┌────────────┐ ┌────────────┐ ┌────────────┐
-│ Service A  │ │ Service B  │ │ Service C  │
-│ Pool: 30개 │ │ Pool: 30개 │ │ Pool: 30개 │
-│ (느림,꽉참)│ │ (정상 ✅)  │ │ (정상 ✅)  │
-└────────────┘ └────────────┘ └────────────┘
+    subgraph Bulkhead [✅ 격벽 적용]
+        PoolA[Pool A: 30개] --> SvcA2[Service A<br/>(Full)]
+        PoolB[Pool B: 30개] --> SvcB2[Service B<br/>(OK)]
+        PoolC[Pool C: 30개] --> SvcC2[Service C<br/>(OK)]
+        
+        style SvcA2 fill:#ffcdd2
+        style SvcB2 fill:#c8e6c9
+        style SvcC2 fill:#c8e6c9
+    end
 ```
 
 ---

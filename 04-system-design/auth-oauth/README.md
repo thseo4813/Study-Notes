@@ -50,40 +50,35 @@ ABAC (Attribute-Based): 속성 기반 (소유자, 부서)
 
 ### 2.1 Session의 원리
 
-```
-[서버가 상태를 가짐]
+```mermaid
+flowchart TB
+    subgraph Session_Flow [Session 인증 방식]
+        direction TB
+        User[Client] -- "1. Login" --> Server
+        Server -- "2. Create Session\nSave to Memory" --> DB[(Session DB)]
+        Server -- "3. Set-Cookie: JSESSIONID=abc" --> User
+        User -- "4. Request + Cookie: abc" --> Server
+        Server -- "5. Lookup Session ID" --> DB
+    end
 
-1. 로그인 → 서버가 세션 생성
-2. 서버: sessions[sessionId] = {userId: 123}
-3. 클라이언트에 sessionId 쿠키 전달
-4. 이후 요청: sessionId로 사용자 확인
-
-[장점]
-- 즉시 무효화 가능 (세션 삭제)
-- 토큰 크기 작음
-
-[단점]
-- 서버 메모리/저장소 필요
-- 서버 확장 시 세션 공유 필요
+    style Session_Flow fill:#e3f2fd,stroke:#1565c0
+    style DB fill:#fff9c4,stroke:#fbc02d
 ```
 
 ### 2.2 JWT의 원리
 
-```
-[클라이언트가 상태를 가짐]
+```mermaid
+flowchart TB
+    subgraph JWT_Flow [JWT 인증 방식]
+        direction TB
+        User[Client] -- "1. Login" --> Server
+        Server -- "2. Create JWT (Sign with Secret)" --> Server
+        Server -- "3. Return Token" --> User
+        User -- "4. Request + Header: Bearer Token" --> Server
+        Server -- "5. Verify Signature (No DB access)" --> Server
+    end
 
-1. 로그인 → 서버가 JWT 생성 (서명 포함)
-2. JWT = {userId: 123, exp: 1735689599} + 서명  (exp = Unix timestamp)
-3. 클라이언트가 JWT 저장
-4. 이후 요청: 서버가 서명 검증만
-
-[장점]
-- 서버 무상태 (Stateless)
-- 확장 용이 (서버 간 세션 공유 불필요)
-
-[단점]
-- 즉시 무효화 어려움
-- 토큰 크기 큼
+    style JWT_Flow fill:#e8f5e9,stroke:#2e7d32
 ```
 
 ### 2.3 핵심 트레이드오프
@@ -255,21 +250,27 @@ JWT는 `.`을 구분자로 하여 세 부분으로 나뉜다. `aaaaa.bbbbb.ccccc
 sequenceDiagram
     participant User as 👤 Client
     participant Server as 🖥️ Server
+    participant DB as 🗄️ Database
 
-    User->>Server: 1. 로그인 (ID/PW)
-    Server->>Server: 2. DB 확인 및 JWT 생성 (Secret Key 서명)
-    Server->>User: 3. JWT 발급 (Access Token)
+    Note over User, Server: 1. 인증 (Authentication)
+    User->>Server: ID / PW 전송
+    Server->>DB: 사용자 확인
+    DB-->>Server: OK
+    Server->>Server: 🔑 Secret Key로 서명 (Sign)
+    Note right of Server: Header + Payload + Signature
+    Server->>User: JWT 발급 (Access Token)
+
+    Note over User, Server: 2. 인가 (Authorization)
+    User->>Server: API 요청 + [Header: Bearer JWT]
     
-    Note over User, Server: 이후 모든 요청
+    Server->>Server: 🔓 서명 검증 (Verify)
+    Note right of Server: DB 조회 없이 유효성 확인 가능
     
-    User->>Server: 4. 데이터 요청 + [Header: Bearer JWT]
-    Server->>Server: 5. JWT 서명 검증 (유효기간, 위변조 확인)
-    alt 유효함
-        Server->>User: 6. 데이터 응답
-    else 위조되거나 만료됨
-        Server->>User: 401 Unauthorized Error
+    alt 유효한 토큰
+        Server->>User: 200 OK (Data)
+    else 조작되거나 만료됨
+        Server->>User: 401 Unauthorized
     end
-
 ```
 
 ---
@@ -289,11 +290,26 @@ sequenceDiagram
 
 가장 표준적인 방식이다.
 
-1. 사용자가 "구글 로그인" 버튼 클릭.
-2. 구글 로그인 창으로 이동  로그인  "이 앱이 네 이메일을 보려는데 허락할래?"
-3. 승인하면 구글이 내 서비스에 **임시 코드(Auth Code)**를 준다.
-4. 내 서비스는 이 **Code**와 **내 앱 비밀키(Client Secret)**를 들고 구글 서버에 가서 **"진짜 토큰(Access Token)"**으로 교환한다.
-5. 이제 이 토큰으로 구글 API를 사용한다.
+```mermaid
+sequenceDiagram
+    participant User as 👤 Resource Owner
+    participant Client as 📱 Client App
+    participant Auth as 🛡️ Google Auth Server
+    participant API as ☁️ Google Resource Server
+
+    User->>Client: "구글로 로그인" 클릭
+    Client->>Auth: 1. 권한 요청 (Redirect to Google)
+    Auth->>User: 2. 로그인 및 정보제공 동의 화면
+    User->>Auth: 3. 승인 (Allow)
+    Auth-->>Client: 4. Authorization Code 전달 (Callback)
+    
+    Client->>Auth: 5. Code + Client Secret 전송
+    Auth->>Auth: Code 검증
+    Auth-->>Client: 6. Access Token 발급
+    
+    Client->>API: 7. API 요청 (with Access Token)
+    API-->>Client: 8. 유저 정보 응답
+```
 
 ---
 

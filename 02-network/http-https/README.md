@@ -21,19 +21,24 @@ HTTPS를 이해하려면 다음 질문들에 답할 수 있어야 한다:
 
 ```mermaid
 flowchart LR
-    subgraph HTTP["📮 HTTP = 엽서"]
-        A1[보내는 사람] --> B1[엽서]
+    subgraph HTTP ["📮 HTTP = 엽서"]
+        direction LR
+        A1[보내는 사람] --> B1[엽서 내용 노출]
         B1 --> C1[배달원 👀]
         C1 --> D1[이웃 👀]
         D1 --> E1[받는 사람]
     end
     
-    subgraph HTTPS["📦 HTTPS = 잠긴 상자"]
+    subgraph HTTPS ["📦 HTTPS = 잠긴 상자"]
+        direction LR
         A2[보내는 사람] --> B2[🔒 잠긴 상자]
         B2 --> C2[배달원 🚫]
         C2 --> D2[이웃 🚫]
         D2 --> E2[받는 사람 🔑]
     end
+
+    style HTTP fill:#ffebee,stroke:#c62828
+    style HTTPS fill:#e8f5e9,stroke:#2e7d32
 ```
 
 ### 1.2 실제로 일어나는 일: 패킷 스니핑
@@ -44,12 +49,22 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     participant You as 👤 당신
-    participant Hacker as 😈 해커<br/>(공공 WiFi)
+    participant Hacker as 😈 해커 (Sniffer)
     participant Server as 🖥️ 서버
     
-    You->>Server: ID: admin, PW: 1234
-    Note over Hacker: "어? 비밀번호가<br/>그대로 보이네?"
-    Hacker-->>Hacker: 🎉 탈취 성공!
+    Note right of You: HTTP 통신 (평문)
+    You->>Server: POST /login { ID: admin, PW: 1234 }
+    
+    Hacker-->>You: (패킷 캡처)
+    Note over Hacker: 🕵️ "어? ID/PW가 보이네?"<br/>Content: "admin / 1234"
+    Hacker->>Hacker: 계정 탈취 완료 🔓
+
+    Note right of You: HTTPS 통신 (암호화)
+    You->>Server: POST /login { 암호화된 데이터 #@!$ }
+    
+    Hacker-->>You: (패킷 캡처)
+    Note over Hacker: 🤔 "이게 뭐야?"<br/>Content: "asd897213..."
+    Hacker->>Hacker: 해독 실패 ❌
 ```
 
 > [!IMPORTANT]

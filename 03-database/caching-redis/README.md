@@ -17,19 +17,30 @@
 
 ### 1.1 속도 차이의 본질
 
-```
-[접근 속도 비교]
-CPU 레지스터:  ~1ns
-L1 캐시:      ~1ns
-L2 캐시:      ~10ns
-RAM (메모리): ~100ns
-SSD:          ~100,000ns (0.1ms)
-HDD:          ~10,000,000ns (10ms)
-
-Redis (메모리): ~1ms
-MySQL (디스크): ~10-100ms
-
-→ 메모리는 디스크보다 100배 이상 빠름
+```mermaid
+graph LR
+    subgraph Memory_Hierarchy [Memory Hierarchy & Speed]
+        direction BT
+        L1[L1 Cache: ~1ns]
+        L2[L2 Cache: ~10ns]
+        RAM[RAM: ~100ns]
+        Redis[Redis: ~1ms]
+        SSD[SSD: ~100,000ns (0.1ms)]
+        HDD[HDD: ~10,000,000ns (10ms)]
+        
+        L1 --> L2
+        L2 --> RAM
+        RAM --> Redis
+        Redis --> SSD
+        SSD --> HDD
+    end
+    
+    style L1 fill:#ffcdd2,stroke:#c62828
+    style L2 fill:#ffcc80,stroke:#ef6c00
+    style RAM fill:#fff9c4,stroke:#fbc02d
+    style Redis fill:#c8e6c9,stroke:#2e7d32
+    style SSD fill:#e1f5fe,stroke:#0277bd
+    style HDD fill:#e0e0e0,stroke:#616161
 ```
 
 ### 1.2 캐싱의 핵심 원리
@@ -235,7 +246,6 @@ sequenceDiagram
     end
     
     App-->>User: 최종 응답
-
 ```
 
 ### 2.2 Write-through

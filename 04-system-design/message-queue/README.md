@@ -17,30 +17,44 @@
 
 ### 1.1 동기 방식의 문제
 
-```
-[동기 호출의 연쇄 실패]
-User → 회원가입 → 이메일 발송 → 포인트 적립
-         │            │             │
-         OK        (장애!)         (실행 안 됨)
-         
-결과: 이메일 서비스 장애 = 회원가입 실패
-→ 강한 결합 (Tight Coupling)
+```mermaid
+graph TD
+    User((User)) -->|1. 회원가입 요청| Signup[회원가입 서비스]
+    Signup -->|2. 이메일 발송 요청| Email[이메일 서비스]
+    Signup -->|3. 포인트 적립 요청| Point[포인트 서비스]
+
+    style Email fill:#ffcdd2,stroke:#c62828
+    style Point fill:#e0e0e0,stroke:#9e9e9e,stroke-dasharray: 5 5
+
+    linkStyle 1 stroke:#c62828,stroke-width:2px,color:red;
+    linkStyle 2 stroke:#9e9e9e,stroke-width:2px,stroke-dasharray: 5 5;
+
+    Note_Email[❌ 장애 발생!] --- Email
+    Note_Point[❌ 실행 안 됨] --- Point
 ```
 
 ### 1.2 메시지 큐의 해결책
 
-```
-[비동기 분리]
-User → 회원가입 → [Queue] → 이메일 서비스
-         │                 → 포인트 서비스
-         OK (즉시 응답)
-         
-이메일 서비스 장애여도:
-- 회원가입은 성공
-- 메시지는 큐에 대기
-- 서비스 복구 후 처리
+```mermaid
+graph TD
+    User((User)) -->|1. 회원가입 요청| Signup[회원가입 서비스]
+    
+    subgraph Async_Layer [비동기 처리 구간]
+        MQ[("Message Queue")]
+    end
+    
+    Signup -->|2. 이벤트 발행| MQ
+    Signup -.->|3. 즉시 응답 OK| User
+    
+    MQ -.->|4. 나중에 처리| Email[이메일 서비스]
+    MQ -.->|4. 나중에 처리| Point[포인트 서비스]
 
-→ 느슨한 결합 (Loose Coupling)
+    style Signup fill:#e3f2fd,stroke:#1565c0
+    style MQ fill:#fff9c4,stroke:#fbc02d
+    style Email fill:#ffcc80,stroke:#ef6c00
+    style Point fill:#ffcc80,stroke:#ef6c00
+    
+    Note_Fail[❌ 장애 발생해도<br/>큐에 안전하게 저장됨] -.-> Email
 ```
 
 ### 1.3 메시지 큐의 세 가지 이점
@@ -270,7 +284,8 @@ if (queueSize > threshold) {
 graph LR
     User[👤 User] -- "Sign Up" --> AuthService[Auth Service]
     
-    subgraph "Message Broker (Kafka/RabbitMQ)"
+    subgraph Broker [Message Broker (Kafka/RabbitMQ)]
+        direction TB
         Queue[("✉️ Message Queue <br/> (Topic: user.created)")]
     end
     
@@ -283,7 +298,10 @@ graph LR
     
     style Queue fill:#ffcc80,stroke:#ef6c00
     style AuthService fill:#e1f5fe,stroke:#0277bd
-
+    style Broker fill:#fff3e0,stroke:#ff9800
+    style EmailService fill:#f5f5f5,stroke:#333
+    style CouponService fill:#f5f5f5,stroke:#333
+    style LogService fill:#f5f5f5,stroke:#333
 ```
 
 ---
