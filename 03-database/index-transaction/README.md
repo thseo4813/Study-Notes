@@ -88,8 +88,57 @@ flowchart LR
     end
 ```
 
-- **Read Committed:** 커밋된 데이터만 읽음. (Oracle, SQL Server 기본)
-- **Repeatable Read:** 트랜잭션 내내 같은 데이터를 읽음. (MySQL InnoDB 기본)
+### 2.4 격리 수준별 발생 가능한 문제
+
+| 격리 수준 | Dirty Read | Non-Repeatable Read | Phantom Read | 성능 |
+|:---|:---:|:---:|:---:|:---:|
+| **READ_UNCOMMITTED** | ⭕ 발생 | ⭕ 발생 | ⭕ 발생 | 최고 |
+| **READ_COMMITTED** | ❌ 방지 | ⭕ 발생 | ⭕ 발생 | 높음 |
+| **REPEATABLE_READ** | ❌ 방지 | ❌ 방지 | ⭕ 발생 | 중간 |
+| **SERIALIZABLE** | ❌ 방지 | ❌ 방지 | ❌ 방지 | 낮음 |
+
+### 2.5 각 문제 상황 설명
+
+#### Dirty Read (더티 리드)
+**커밋되지 않은 데이터를 읽는 현상**
+
+```
+TX1: UPDATE balance = 0  (아직 커밋 안 함)
+TX2: SELECT balance → 0 반환 (잘못된 값!)
+TX1: ROLLBACK → balance는 원래 값으로 복구
+TX2: 이미 잘못된 값(0)으로 로직 처리 완료 → 문제 발생!
+```
+
+#### Non-Repeatable Read (반복 불가능 읽기)
+**같은 쿼리를 두 번 실행했을 때 결과가 다른 현상**
+
+```
+TX1: SELECT balance → 1000
+TX2: UPDATE balance = 500, COMMIT
+TX1: SELECT balance → 500 (값이 바뀜!)
+     같은 트랜잭션인데 조회 결과가 다름
+```
+
+#### Phantom Read (팬텀 리드)
+**같은 조건으로 조회했을 때 행(Row)의 개수가 달라지는 현상**
+
+```
+TX1: SELECT COUNT(*) WHERE status='ACTIVE' → 10개
+TX2: INSERT INTO ... status='ACTIVE', COMMIT
+TX1: SELECT COUNT(*) WHERE status='ACTIVE' → 11개 (유령처럼 행 추가!)
+```
+
+### 2.6 DB별 기본 격리 수준
+
+| DB | 기본 격리 수준 | 특징 |
+|:---|:---|:---|
+| **MySQL (InnoDB)** | REPEATABLE READ | MVCC로 Phantom Read도 대부분 방지 |
+| **PostgreSQL** | READ COMMITTED | MVCC 기반 |
+| **Oracle** | READ COMMITTED | 락 기반 |
+| **SQL Server** | READ COMMITTED | 락 기반, SNAPSHOT 옵션 제공 |
+
+> [!TIP]
+> **실무 권장:** 대부분의 경우 DB 기본값을 사용하고, 특별한 요구사항이 있을 때만 명시적으로 설정합니다.
 
 ---
 
@@ -146,6 +195,8 @@ public class TransferService {
 1. **인덱스**: `WHERE`, `JOIN`, `ORDER BY` 절에 사용되는 컬럼에 걸어야 하며, 너무 많이 걸면 쓰기 성능이 죽는다.
 2. **복합 인덱스**: 순서가 중요하다. (A, B) 인덱스는 A 없이 B만으로 검색하면 인덱스를 타지 못한다.
 3. **트랜잭션**: ACID를 보장하기 위해 사용하며, 격리 수준(Isolation Level)을 조절해 성능과 정합성의 균형을 맞춰야 한다.
+4. **격리 수준 문제**: Dirty Read → Non-Repeatable Read → Phantom Read 순으로 높은 격리 수준에서 방지된다.
+5. **DB 기본값**: MySQL은 REPEATABLE READ, Oracle/PostgreSQL/SQL Server는 READ COMMITTED가 기본이다.
 
 ---
 
@@ -153,7 +204,15 @@ public class TransferService {
 
 1. **"커버링 인덱스(Covering Index)"란 무엇이며 왜 성능에 좋은가?**
    → 쿼리에 필요한 모든 컬럼이 인덱스에 포함되어 있어, 실제 테이블 데이터 블록을 읽지 않고도 결과를 반환할 수 있어 I/O가 획기적으로 줄어든다.
-2. **트랜잭션 격리 수준 중 `Phantom Read`란 무엇인가?**
-   → 한 트랜잭션 안에서 같은 조건으로 두 번 조회했을 때, 다른 트랜잭션이 데이터를 삽입/삭제하여 결과 행의 개수가 달라지는 현상.
-3. **인덱스를 걸었는데도 쿼리가 느리다면 무엇을 확인해야 하는가?**
+
+2. **Dirty Read, Non-Repeatable Read, Phantom Read의 차이는?**
+   → Dirty Read: 커밋 안 된 데이터 읽음 / Non-Repeatable Read: 같은 행의 값이 바뀜 / Phantom Read: 행의 개수가 바뀜
+
+3. **MySQL InnoDB의 기본 격리 수준은? 왜 그 수준인가?**
+   → REPEATABLE READ. MVCC를 통해 높은 정합성을 보장하면서도 성능을 유지하기 위함.
+
+4. **격리 수준을 SERIALIZABLE로 설정하면 어떤 문제가 발생하는가?**
+   → 모든 트랜잭션이 순차 실행되어 동시성이 극도로 낮아지고 성능이 급격히 저하됨.
+
+5. **인덱스를 걸었는데도 쿼리가 느리다면 무엇을 확인해야 하는가?**
    → `EXPLAIN`을 통해 실행 계획을 확인하여 인덱스를 제대로 타고 있는지(Full Table Scan 여부), Cardinality(분별력)가 너무 낮은 컬럼은 아닌지 확인한다.
