@@ -161,3 +161,60 @@
   - OAuth 2.0 플로우
   - Access/Refresh Token 전략
 
+### ☕ [05-java: Java 생태계](./05-java)
+JVM 원리부터 Spring Framework까지 Java 백엔드 개발의 핵심을 다룹니다.
+
+- [**JVM Internals**](./05-java/jvm-internals)
+  - JVM 아키텍처 (Class Loader, Runtime Data Area, Execution Engine)
+  - 가비지 컬렉션 (GC) 알고리즘과 튜닝
+  - JIT 컴파일러와 성능 최적화
+
+- [**Spring Core**](./05-java/spring-core)
+  - IoC (Inversion of Control) 컨테이너
+  - DI (Dependency Injection) 패턴과 구현
+  - AOP (Aspect-Oriented Programming)
+  - Bean Lifecycle과 Scope
+
+- [**Spring Boot**](./05-java/spring-boot)
+  - Auto Configuration 원리
+  - Starter 의존성 관리
+  - Actuator와 모니터링
+  - Profile과 외부 설정
+
+- [**Spring MVC**](./05-java/spring-mvc)
+  - DispatcherServlet과 요청 처리 흐름
+  - Filter vs Interceptor vs AOP
+  - Exception Handling 전략
+  - REST API 설계와 ResponseEntity
+
+- [**Spring Data JPA**](./05-java/spring-data-jpa)
+  - JPA vs Hibernate vs Spring Data JPA
+  - 영속성 컨텍스트와 1차 캐시
+  - N+1 문제와 해결 전략 (Fetch Join, EntityGraph)
+  - QueryDSL과 동적 쿼리
+
+- [**Spring Security**](./05-java/spring-security)
+  - Security Filter Chain 구조
+  - 인증(Authentication) vs 인가(Authorization)
+  - JWT 토큰 기반 인증 구현
+  - OAuth2 Client/Resource Server
+
+- [**Spring Testing**](./05-java/spring-testing)
+  - 단위 테스트 vs 통합 테스트
+  - @SpringBootTest vs @WebMvcTest vs @DataJpaTest
+  - Mockito와 Mock 객체 활용
+  - Testcontainers로 실제 환경 테스트
+
+- [**Spring Transaction**](./05-java/spring-transaction)
+  - @Transactional 전파 레벨 (REQUIRED, REQUIRES_NEW)
+  - 격리 수준 (Isolation Level)
+  - 롤백 규칙과 주의사항
+  - 내부 호출 문제 해결
+
+- [**Java Concurrency**](./05-java/java-concurrency)
+  - Thread와 Runnable
+  - synchronized와 Lock
+  - ExecutorService와 Thread Pool
+  - CompletableFuture와 비동기 처리
+  - Virtual Threads (Java 21)와 @Async
+
